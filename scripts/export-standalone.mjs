@@ -1,0 +1,20 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const dist = resolve(root, 'dist');
+let html = await readFile(resolve(dist, 'index.html'), 'utf8');
+const scriptMatch = html.match(/<script\b[^>]*src="([^"]+)"[^>]*><\/script>/);
+const styleMatch = html.match(/<link\b[^>]*href="([^"]+\.css)"[^>]*>/);
+if (!scriptMatch || !styleMatch) throw new Error('请先执行 npm run build，未找到构建资源。');
+const resolveAsset = (path) => resolve(dist, path.replace(/^\//, ''));
+const script = (await readFile(resolveAsset(scriptMatch[1]), 'utf8')).replace(/<\/script/gi, '<\\/script');
+const css = (await readFile(resolveAsset(styleMatch[1]), 'utf8')).replace(/<\/style/gi, '<\\/style');
+const icon = await readFile(resolve(dist, 'favicon.svg'));
+html = html.replace(scriptMatch[0], () => `<script type="module">${script}</script>`);
+html = html.replace(styleMatch[0], () => `<style>${css}</style>`);
+html = html.replace('href="/favicon.svg"', `href="data:image/svg+xml;base64,${icon.toString('base64')}"`);
+const output = resolve(dist, '轻盈.html');
+await writeFile(output, html);
+console.log(`单文件网页版已生成：${output}`);
