@@ -20,6 +20,8 @@ export interface Food {
   portion: string;
   portionGrams: number;
   keywords?: string;
+  unit?: "g" | "ml";
+  note?: string;
 }
 export type ActivityCategory =
   "有氧运动" | "力量训练" | "球类运动" | "户外运动" | "日常活动" | "身心训练";
@@ -39,6 +41,7 @@ export interface FoodLog {
   name: string;
   emoji: string;
   grams: number;
+  unit?: "g" | "ml";
   meal: Meal;
   date: string;
   kcal: number;

@@ -6,11 +6,13 @@ import type { Food } from "./types";
 interface CustomFoodFormProps {
   onSave: (food: Food) => void;
   onClose: () => void;
+  initialFood?: Food;
 }
 
 export default function CustomFoodForm({
   onSave,
   onClose,
+  initialFood,
 }: CustomFoodFormProps) {
   const headingId = useId();
   const introId = useId();
@@ -19,13 +21,21 @@ export default function CustomFoodForm({
   const nameRef = useRef<HTMLInputElement>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-  const [name, setName] = useState("");
-  const [kcal, setKcal] = useState("");
-  const [protein, setProtein] = useState("0");
-  const [carbs, setCarbs] = useState("0");
-  const [fat, setFat] = useState("0");
-  const [portionGrams, setPortionGrams] = useState("100");
+  const [name, setName] = useState(initialFood?.name ?? "");
+  const [kcal, setKcal] = useState(initialFood ? String(initialFood.kcal) : "");
+  const [protein, setProtein] = useState(
+    initialFood ? String(initialFood.protein) : "0",
+  );
+  const [carbs, setCarbs] = useState(
+    initialFood ? String(initialFood.carbs) : "0",
+  );
+  const [fat, setFat] = useState(initialFood ? String(initialFood.fat) : "0");
+  const [portionGrams, setPortionGrams] = useState(
+    initialFood ? String(initialFood.portionGrams) : "100",
+  );
+  const [unit, setUnit] = useState<"g" | "ml">(initialFood?.unit ?? "g");
   const [error, setError] = useState("");
+  const unitLabel = unit === "ml" ? "毫升" : "克";
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -103,6 +113,7 @@ export default function CustomFoodForm({
           carbs: Number(carbs),
           fat: Number(fat),
           portionGrams: Number(portionGrams),
+          unit,
         }),
       );
     } catch (issue) {
@@ -144,7 +155,9 @@ export default function CustomFoodForm({
         <form onSubmit={submit}>
           <div className="modal-body">
             <p className="custom-food-intro" id={introId}>
-              把常吃的包装食品或自己的食谱加入食物库，之后就能直接选择和记录。
+              {initialFood
+                ? "已带入该食物的参考数据，请按你实际的包装核对并修改。保存后会新增自定义食物，原条目保持不变。"
+                : "把常吃的包装食品或自己的食谱加入食物库，之后就能直接选择和记录。"}
             </p>
             <div className="form-grid">
               <label className="field full">
@@ -162,10 +175,26 @@ export default function CustomFoodForm({
                 />
               </label>
               <label className="field full">
-                热量 <span>kcal / 每 100 克</span>
+                营养基准
+                <select
+                  name="customFoodUnit"
+                  aria-label="营养基准"
+                  value={unit}
+                  onChange={(event) => {
+                    setUnit(event.target.value as "g" | "ml");
+                    if (error) setError("");
+                  }}
+                >
+                  <option value="g">按每 100 克填写</option>
+                  <option value="ml">按每 100 毫升填写</option>
+                </select>
+                <small>按包装标签选择；切换基准后，数值不会自动换算。</small>
+              </label>
+              <label className="field full">
+                热量 <span>kcal / 每 100 {unitLabel}</span>
                 <input
                   name="customFoodKcal"
-                  aria-label="每100克热量"
+                  aria-label={`每100${unitLabel}热量`}
                   type="number"
                   min="0"
                   max="1000"
@@ -178,10 +207,10 @@ export default function CustomFoodForm({
                 <small>千卡 kcal = 千焦 kJ ÷ 4.184</small>
               </label>
               <label className="field">
-                蛋白质 <span>g / 100 克</span>
+                蛋白质 <span>g / 100 {unitLabel}</span>
                 <input
                   name="customFoodProtein"
-                  aria-label="每100克蛋白质"
+                  aria-label={`每100${unitLabel}蛋白质`}
                   aria-describedby={nutritionNoteId}
                   type="number"
                   min="0"
@@ -193,10 +222,10 @@ export default function CustomFoodForm({
                 />
               </label>
               <label className="field">
-                碳水化合物 <span>g / 100 克</span>
+                碳水化合物 <span>g / 100 {unitLabel}</span>
                 <input
                   name="customFoodCarbs"
-                  aria-label="每100克碳水化合物"
+                  aria-label={`每100${unitLabel}碳水化合物`}
                   aria-describedby={nutritionNoteId}
                   type="number"
                   min="0"
@@ -208,10 +237,10 @@ export default function CustomFoodForm({
                 />
               </label>
               <label className="field">
-                脂肪 <span>g / 100 克</span>
+                脂肪 <span>g / 100 {unitLabel}</span>
                 <input
                   name="customFoodFat"
-                  aria-label="每100克脂肪"
+                  aria-label={`每100${unitLabel}脂肪`}
                   aria-describedby={nutritionNoteId}
                   type="number"
                   min="0"
@@ -223,10 +252,10 @@ export default function CustomFoodForm({
                 />
               </label>
               <label className="field">
-                常用份量 <span>克</span>
+                常用份量 <span>{unitLabel}</span>
                 <input
                   name="customFoodPortion"
-                  aria-label="常用份量"
+                  aria-label={`常用份量（${unitLabel}）`}
                   type="number"
                   min="0.1"
                   max="2000"
@@ -243,7 +272,7 @@ export default function CustomFoodForm({
               <CircleHelp size={16} />
               <div>
                 <p id={nutritionNoteId}>
-                  按包装每 100 克填写，未知营养素可填
+                  按包装每 100 {unitLabel}填写，未知营养素可填
                   0；统计会显示你输入的数值。
                 </p>
                 <p>缺少热量时请先查包装或可靠资料，不自动猜值。</p>

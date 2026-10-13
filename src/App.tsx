@@ -43,8 +43,10 @@ import CustomFoodForm from "./CustomFoodForm";
 import { searchFoods } from "./food-search";
 
 type View = "overview" | "diary" | "exercise" | "library" | "profile";
+type FoodRecordDraft = { amount: string; meal: Meal; date: string };
 type Modal =
-  { kind: "food"; selected?: Food } | { kind: "exercise"; selected?: Activity };
+  | { kind: "food"; selected?: Food; draft?: FoodRecordDraft }
+  | { kind: "exercise"; selected?: Activity };
 const meals: Meal[] = ["早餐", "午餐", "晚餐", "加餐"];
 const mealEmojis = ["🌤️", "🍲", "🌙", "🍎"];
 const navItems = [
@@ -56,6 +58,10 @@ const navItems = [
 ];
 const fmt = (n: number) => Math.round(n).toLocaleString("zh-CN");
 const decimal = (n: number) => Number(n.toFixed(1));
+const foodUnit = (food: { unit?: "g" | "ml" }) =>
+  food.unit === "ml" ? "毫升" : "克";
+const shortFoodUnit = (food: { unit?: "g" | "ml" }) =>
+  food.unit === "ml" ? "mL" : "g";
 const dateText = (date: string) =>
   new Date(date + "T12:00:00").toLocaleDateString("zh-CN", {
     month: "long",
@@ -93,6 +99,10 @@ export default function App() {
   const [date, setDate] = useState(localDate());
   const [modal, setModal] = useState<Modal | null>(null);
   const [customEntry, setCustomEntry] = useState<"library" | "record" | null>(
+    null,
+  );
+  const [customSeed, setCustomSeed] = useState<Food | undefined>();
+  const [customReturnModal, setCustomReturnModal] = useState<Modal | null>(
     null,
   );
   const [modalMeal, setModalMeal] = useState<Meal>("早餐");
@@ -200,7 +210,9 @@ export default function App() {
       <span className="log-emoji">{log.emoji}</span>
       <div className="log-info">
         <strong>{log.name}</strong>
-        <small>{decimal(log.grams)} 克</small>
+        <small>
+          {decimal(log.grams)} {foodUnit(log)}
+        </small>
       </div>
       <span className="log-value">
         {fmt(log.kcal)} <small>kcal</small>
@@ -664,7 +676,9 @@ export default function App() {
                             <span>
                               {r.emoji} {r.name}
                             </span>
-                            <small>{decimal(r.grams)} g</small>
+                            <small>
+                              {decimal(r.grams)} {shortFoodUnit(r)}
+                            </small>
                           </p>
                         ))}
                         {records.length > 2 && (
@@ -905,7 +919,7 @@ export default function App() {
               <label className="search-box">
                 <Search size={18} />
                 <input
-                  placeholder="搜索食物或别名，比如提子、地瓜…"
+                  placeholder="搜索食物或品牌，比如提子、养乐多…"
                   aria-label="搜索食物"
                   value={foodQuery}
                   onChange={(e) => {
@@ -924,11 +938,14 @@ export default function App() {
                 )}
               </label>
               <span className="library-count">
-                {availableFoods.length} 种食物 · 每 100 克可食部分
+                {availableFoods.length} 种食物 · 每 100 克 / 毫升，见条目
               </span>
               <button
                 className="button secondary custom-food-button"
-                onClick={() => setCustomEntry("library")}
+                onClick={() => {
+                  setCustomSeed(undefined);
+                  setCustomEntry("library");
+                }}
               >
                 <Plus size={16} /> 添加自定义食物
               </button>
@@ -957,11 +974,13 @@ export default function App() {
                       )}
                     </h3>
                     <div className="catalog-meta">
-                      <strong>{f.kcal}</strong> kcal <span>/ 100 g</span>
+                      <strong>{f.kcal}</strong> kcal{" "}
+                      <span>/ 100 {shortFoodUnit(f)}</span>
                     </div>
                     <small>
                       蛋白质 {f.protein} · 碳水 {f.carbs} · 脂肪 {f.fat} g
                     </small>
+                    {f.note && <p className="food-reference-note">{f.note}</p>}
                   </div>
                   <div className="catalog-actions">
                     <button
@@ -1011,7 +1030,10 @@ export default function App() {
                 )}
                 <button
                   className="button secondary"
-                  onClick={() => setCustomEntry("library")}
+                  onClick={() => {
+                    setCustomSeed(undefined);
+                    setCustomEntry("library");
+                  }}
                 >
                   <Plus size={16} /> 没找到？添加自己的食物
                 </button>
@@ -1019,7 +1041,7 @@ export default function App() {
             )}
             <p className="table-note">
               当前列出全部 {foodMatches.length}{" "}
-              项匹配食物。食物数据为参考估算，部分细分水果沿用同类食物通用数据，品种、烹调和品牌会影响实际热量。标注「熟」的食物按熟重记录；包装食品以营养标签为准。
+              项匹配食物。食物数据为参考估算，部分细分水果与品牌条目沿用同类通用数据。克与毫升不会自动转换，请按条目单位记录；标注「熟」的食物按熟重记录。包装食品可在记录时点「按我的包装修正」，另存自己的标签数据。
             </p>
           </>
         )}
@@ -1079,8 +1101,19 @@ export default function App() {
         <RecordModal
           modal={modal}
           foodCatalog={availableFoods}
-          onAddCustom={() => {
+          onAddCustom={(food, draft) => {
             setModal(null);
+            setCustomSeed(
+              food
+                ? {
+                    ...food,
+                    name: food.name
+                      .replace(/（(?:同类)?通用参考）$/, "")
+                      .replace(/，通用参考(?=）$)/, ""),
+                  }
+                : undefined,
+            );
+            setCustomReturnModal({ kind: "food", selected: food, draft });
             setCustomEntry("record");
           }}
           date={date}
@@ -1101,9 +1134,13 @@ export default function App() {
       )}
       {customEntry && (
         <CustomFoodForm
+          initialFood={customSeed}
           onClose={() => {
-            if (customEntry === "record") setModal({ kind: "food" });
+            if (customEntry === "record")
+              setModal(customReturnModal ?? { kind: "food" });
             setCustomEntry(null);
+            setCustomSeed(undefined);
+            setCustomReturnModal(null);
           }}
           onSave={(food) => {
             if (state.customFoods.length >= 2000)
@@ -1111,12 +1148,32 @@ export default function App() {
                 "自定义食物已达 2,000 项，请先删除不再使用的项目",
               );
             setState((s) => ({ ...s, customFoods: [...s.customFoods, food] }));
-            if (customEntry === "record") openFood(food, modalMeal);
-            else {
+            if (customEntry === "record") {
+              const previous =
+                customReturnModal?.kind === "food"
+                  ? customReturnModal
+                  : undefined;
+              const draft = previous?.draft;
+              setModal({
+                kind: "food",
+                selected: food,
+                draft: draft
+                  ? {
+                      ...draft,
+                      amount:
+                        (previous?.selected?.unit ?? "g") === (food.unit ?? "g")
+                          ? draft.amount
+                          : String(food.portionGrams),
+                    }
+                  : undefined,
+              });
+            } else {
               setFoodCategory("自定义");
               setFoodQuery("");
             }
             setCustomEntry(null);
+            setCustomSeed(undefined);
+            setCustomReturnModal(null);
             notify(`已添加自定义食物：${food.name}`);
           }}
         />
@@ -1454,7 +1511,7 @@ function RecordModal({
 }: {
   modal: Modal;
   foodCatalog: Food[];
-  onAddCustom: () => void;
+  onAddCustom: (food?: Food, draft?: FoodRecordDraft) => void;
   date: string;
   meal: Meal;
   weight?: number;
@@ -1468,17 +1525,23 @@ function RecordModal({
   );
   const [query, setQuery] = useState("");
   const [amount, setAmount] = useState(
-    String(
-      isFood && modal.selected
-        ? (modal.selected as Food).portionGrams
-        : isFood
-          ? 100
-          : 30,
-    ),
+    modal.kind === "food" && modal.draft
+      ? modal.draft.amount
+      : String(
+          isFood && modal.selected
+            ? (modal.selected as Food).portionGrams
+            : isFood
+              ? 100
+              : 30,
+        ),
   );
   const [logWeight, setLogWeight] = useState(weight ? String(weight) : "");
-  const [logMeal, setLogMeal] = useState(meal);
-  const [logDate, setLogDate] = useState(date);
+  const [logMeal, setLogMeal] = useState(
+    modal.kind === "food" ? (modal.draft?.meal ?? meal) : meal,
+  );
+  const [logDate, setLogDate] = useState(
+    modal.kind === "food" ? (modal.draft?.date ?? date) : date,
+  );
   const [error, setError] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -1548,7 +1611,7 @@ function RecordModal({
     if (!numericValid) {
       setError(
         isFood
-          ? "请输入 0.1 至 10,000 克的食物重量"
+          ? `请输入 0.1 至 10,000 ${foodUnit(selected as Food)}的食物用量`
           : "请输入有效的运动时长和体重",
       );
       return;
@@ -1652,7 +1715,7 @@ function RecordModal({
                   <button
                     type="button"
                     className="button ghost custom-food-button"
-                    onClick={onAddCustom}
+                    onClick={() => onAddCustom()}
                   >
                     <Plus size={15} /> 库里没有？添加自定义食物
                   </button>
@@ -1672,7 +1735,7 @@ function RecordModal({
                       </span>
                       <span className="modal-result-value">
                         {isFood
-                          ? `${(item as Food).kcal} kcal / 100g`
+                          ? `${(item as Food).kcal} kcal / 100 ${shortFoodUnit(item as Food)}`
                           : `${(item as Activity).met} MET`}
                       </span>
                       <Plus size={17} />
@@ -1689,7 +1752,7 @@ function RecordModal({
                     <h3>{selected.name}</h3>
                     <small>
                       {isFood
-                        ? `${(selected as Food).kcal} kcal / 100g · ${(selected as Food).portion} 约 ${(selected as Food).portionGrams}g`
+                        ? `${(selected as Food).kcal} kcal / 100 ${shortFoodUnit(selected as Food)} · ${(selected as Food).portion} 约 ${(selected as Food).portionGrams} ${shortFoodUnit(selected as Food)}`
                         : `${(selected as Activity).met} MET · ${(selected as Activity).description}`}
                     </small>
                   </div>
@@ -1704,10 +1767,30 @@ function RecordModal({
                     更换
                   </button>
                 </div>
+                {isFood && (selected as Food).note && (
+                  <p className="food-reference-note">
+                    {(selected as Food).note}
+                  </p>
+                )}
+                {isFood && (
+                  <button
+                    type="button"
+                    className="button ghost packaging-edit-button"
+                    onClick={() =>
+                      onAddCustom(selected as Food, {
+                        amount,
+                        meal: logMeal,
+                        date: logDate,
+                      })
+                    }
+                  >
+                    <Settings2 size={15} /> 按我的包装修正
+                  </button>
+                )}
                 <div className="form-grid">
                   <label className="field full">
-                    {isFood ? "实际食用重量" : "运动时长"}{" "}
-                    <span>{isFood ? "克" : "分钟"}</span>
+                    {isFood ? "实际食用量" : "运动时长"}{" "}
+                    <span>{isFood ? foodUnit(selected as Food) : "分钟"}</span>
                     <input
                       name="amount"
                       type="number"
@@ -1728,7 +1811,7 @@ function RecordModal({
                         onClick={() => setAmount(String(n))}
                       >
                         {n}
-                        {isFood ? " 克" : " 分钟"}
+                        {isFood ? ` ${foodUnit(selected as Food)}` : " 分钟"}
                       </button>
                     ))}
                   </div>
@@ -1821,7 +1904,7 @@ function RecordModal({
                 </div>
                 <p className="card-footnote">
                   {isFood
-                    ? "份量按可食部分记录，熟食请称熟重。热量为参考估算。"
+                    ? `请按${foodUnit(selected as Food)}记录用量，克与毫升不自动转换。熟食按熟重记录，包装食品以标签为准。`
                     : "已扣除同一时段的静息消耗。实际消耗受运动强度和个人状态影响。"}
                 </p>
               </>

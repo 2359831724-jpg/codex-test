@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { searchFoods } from "../src/food-search";
 import type { Food } from "../src/types";
+import { foods } from "../src/data";
 
 function food(
   id: string,
@@ -24,6 +25,34 @@ function food(
   };
 }
 const ids = (foods: Food[]) => foods.map((item) => item.id);
+
+test("the live catalog finds Yakult under simplified, traditional, English and pinyin names", () => {
+  for (const query of [
+    "养乐多",
+    "養樂多",
+    "益力多",
+    "Yakult",
+    "ＹＡＫＵＬＴ",
+    "yang le duo",
+    "yi li duo",
+  ]) {
+    const matches = searchFoods(foods, query);
+    assert.deepEqual(ids(matches), ["brand-yakult-reference"], query);
+    assert.equal(matches[0].unit, "ml");
+    assert.match(matches[0].note ?? "", /并非经核验的品牌标签/);
+  }
+  assert.equal(searchFoods(foods, "").length, foods.length);
+});
+
+test("branded drink search separates sugared and zero sugar references", () => {
+  const zero = searchFoods(foods, "可口可乐 无糖");
+  const sugared = searchFoods(foods, "可口可乐 含糖");
+  assert.ok(zero.length > 0);
+  assert.ok(sugared.length > 0);
+  assert.ok(zero.every((food) => food.kcal === 0));
+  assert.ok(sugared.every((food) => food.kcal > 0));
+  assert.ok(searchFoods(foods, "旺旺 雪饼")[0].note?.includes("米饼"));
+});
 
 test("grape aliases find the existing grape ID and new varieties with fresh fruit first", () => {
   const catalog = [

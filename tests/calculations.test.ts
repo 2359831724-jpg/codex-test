@@ -320,6 +320,140 @@ test("custom food nutrition survives JSON backup and logging at the chosen porti
   assert.notEqual(unknownMacros.id, custom.id);
 });
 
+test("milliliter food labels scale by measured volume and survive JSON backups", () => {
+  const drink = makeCustomFood({
+    name: "测试饮品",
+    kcal: 69,
+    protein: 1,
+    carbs: 16,
+    fat: 0,
+    portionGrams: 100,
+    unit: "ml",
+    note: "合成测试标签：数值按每 100 ml 填写。",
+  });
+  assert.equal(drink.unit, "ml");
+  const bottle = makeFoodLog(drink, 100, "加餐", "2026-10-12");
+  const twoBottles = makeFoodLog(drink, 200, "加餐", "2026-10-12");
+  assert.equal(bottle.kcal, 69);
+  assert.equal(twoBottles.kcal, 138);
+  assert.equal(twoBottles.grams, 200);
+  assert.equal(twoBottles.unit, "ml");
+  assert.equal(twoBottles.protein, 2);
+  assert.equal(twoBottles.carbs, 32);
+  const riceLog = makeFoodLog(rice, 100, "午餐", "2026-10-12");
+  assert.equal(riceLog.unit, "g");
+  const state = {
+    ...emptyState(),
+    profile,
+    customFoods: [drink],
+    foodLogs: [bottle, twoBottles, riceLog],
+  };
+  const restored = parseState(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(restored, state);
+  assert.equal(restored.customFoods[0].note, drink.note);
+  assert.equal(restored.customFoods[0].unit, "ml");
+  assert.equal(restored.foodLogs[1].unit, "ml");
+  assert.equal(summarize([twoBottles, riceLog], [], "2026-10-12").intake, 254);
+});
+
+test("legacy gram records and custom foods gain g units without changing historical amounts or nutrition", () => {
+  const { unit: ignoredLogUnit, ...oldLog } = makeFoodLog(
+    rice,
+    150,
+    "午餐",
+    "2026-10-12",
+  );
+  const { unit: ignoredFoodUnit, ...oldCustom } = makeCustomFood({
+    name: "旧自定义食物",
+    kcal: 116,
+    protein: 2.6,
+    carbs: 25.6,
+    fat: 0.3,
+    portionGrams: 150,
+  });
+  const exerciseLog = makeExerciseLog(running, 30, 70, "2026-10-12");
+  const legacy = {
+    version: 1,
+    profile,
+    foodLogs: [oldLog],
+    exerciseLogs: [exerciseLog],
+    customFoods: [oldCustom],
+  };
+  const before = JSON.stringify(legacy);
+  const migrated = parseState(legacy);
+  const { unit: logUnit, ...migratedLog } = migrated.foodLogs[0];
+  const { unit: customUnit, ...migratedCustom } = migrated.customFoods[0];
+  assert.equal(logUnit, "g");
+  assert.equal(customUnit, "g");
+  assert.deepEqual(migratedLog, oldLog);
+  assert.deepEqual(migratedCustom, oldCustom);
+  assert.deepEqual(migrated.profile, profile);
+  assert.deepEqual(migrated.exerciseLogs, [exerciseLog]);
+  assert.equal(migrated.version, 1);
+  assert.equal(STORAGE_KEY, "calorie-studio:v1");
+  assert.equal(JSON.stringify(legacy), before);
+  assert.deepEqual(parseState(JSON.parse(JSON.stringify(migrated))), migrated);
+});
+
+test("food units and optional label notes are validated without losing metadata", () => {
+  const input = {
+    name: "单位测试",
+    kcal: 69,
+    protein: 1,
+    carbs: 16,
+    fat: 0,
+    portionGrams: 100,
+  };
+  const custom = makeCustomFood(input);
+  const log = makeFoodLog(custom, 100, "加餐", "2026-10-12");
+  for (const invalidUnit of [null, "kg", "ML", "毫升", 100, []]) {
+    assert.throws(() =>
+      parseState({
+        ...emptyState(),
+        foodLogs: [{ ...log, unit: invalidUnit }],
+      }),
+    );
+    assert.throws(() =>
+      parseState({
+        ...emptyState(),
+        customFoods: [{ ...custom, unit: invalidUnit }],
+      }),
+    );
+    assert.throws(() =>
+      makeCustomFood({ ...input, unit: invalidUnit } as Parameters<
+        typeof makeCustomFood
+      >[0]),
+    );
+    assert.throws(() =>
+      makeFoodLog(
+        { ...custom, unit: invalidUnit } as Food,
+        100,
+        "加餐",
+        "2026-10-12",
+      ),
+    );
+  }
+  for (const invalidNote of [null, 42, [], "", "   ", "a".repeat(501)]) {
+    assert.throws(() =>
+      parseState({
+        ...emptyState(),
+        customFoods: [{ ...custom, note: invalidNote }],
+      }),
+    );
+    assert.throws(() =>
+      makeCustomFood({ ...input, note: invalidNote } as Parameters<
+        typeof makeCustomFood
+      >[0]),
+    );
+  }
+  const noted = makeCustomFood({ ...input, unit: "ml", note: "a".repeat(500) });
+  const restored = parseState({ ...emptyState(), customFoods: [noted] });
+  assert.equal(restored.customFoods[0].note, noted.note);
+  assert.equal(restored.customFoods[0].unit, "ml");
+  assert.equal(custom.unit, "g");
+  assert.equal(custom.note, undefined);
+});
+
 test("custom food imports reject malformed catalogs, invalid labels/numbers and duplicate IDs", () => {
   const custom = makeCustomFood({
     name: "自定义米饭",

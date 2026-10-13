@@ -5,8 +5,9 @@ import { proteinFoods } from "./foods-protein";
 import { dishFoods } from "./foods-dishes";
 import { extraFruitFoods } from "./foods-fruit-more";
 import { everydayFoods } from "./foods-everyday-more";
+import { createBrandFoods } from "./foods-branded";
 
-// 食物为常见可食用状态下每 100 g 的参考估算（饮品按近似 100 ml）；
+// 食物为常见可食用状态下每 100 g 的参考估算，unit=ml 时按每 100 ml；
 // 品牌、配方和烹调会影响数值。运动 MET 参考 2011/2024 活动代谢当量汇编
 // 中的常见活动范围，用于日常估算，不能视为个体实测值。
 export const foodCategories: FoodCategory[] = [
@@ -28,7 +29,7 @@ export const activityCategories: ActivityCategory[] = [
   "身心训练",
 ];
 
-export const foods: Food[] = [
+const baseFoods: Food[] = [
   ...foodGroup("主食谷物", [
     [
       "white-rice",
@@ -1735,6 +1736,27 @@ export const foods: Food[] = [
 ].map((food) =>
   food.id === "olive-oil" ? { ...food, category: "调味与油脂" as const } : food,
 );
+
+// 品牌条目用于按常见商品名称寻找同类参考，不代表已核验该商品的标签。
+const probioticReference = baseFoods.find(
+  (food) => food.id === "ext-everyday-probiotic-drink",
+)!;
+const yakultReference: Food = {
+  ...probioticReference,
+  id: "brand-yakult-reference",
+  name: "养乐多 / 益力多（乳酸菌饮料，通用参考）",
+  unit: "ml",
+  portion: "1 瓶（100 mL 参考份量）",
+  portionGrams: 100,
+  keywords:
+    "养乐多 養樂多 益力多 Yakult yangleduo yang le duo yiliduo yi li duo 原味 乳酸菌饮料",
+  note: "暂用含糖乳酸菌饮料通用营养值，按 1 mL≈1 g 估算，并非经核验的品牌标签。100 mL 为参考瓶装份量；地区、口味和包装可能不同，请按手中瓶身标签修正。",
+};
+export const foods: Food[] = [
+  ...baseFoods,
+  yakultReference,
+  ...createBrandFoods(baseFoods),
+];
 
 type ActivityRow = [
   id: string,

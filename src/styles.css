@@ -3521,3 +3521,22 @@ select {
     height: 14px;
   }
 }
+
+@media (max-width: 590px) {
+  .custom-food-modal .field:not(.full) > span {
+    position: static;
+    align-self: flex-start;
+    margin-top: -4px;
+    font-size: 11px;
+  }
+}
+.food-reference-note {
+  margin: 8px 0;
+  color: var(--text-secondary, #657368);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.packaging-edit-button {
+  margin-bottom: 16px;
+}

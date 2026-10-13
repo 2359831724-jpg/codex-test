@@ -56,6 +56,13 @@ function string(input: unknown, name: string, maxLength = 200): string {
   return input;
 }
 
+function foodUnit(input: unknown): "g" | "ml" {
+  if (input === undefined) return "g";
+  if (input !== "g" && input !== "ml")
+    throw new Error("食物计量单位必须是克（g）或毫升（ml）。");
+  return input;
+}
+
 function dateString(input: unknown): string {
   if (typeof input !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input)) {
     throw new Error("记录日期必须使用 YYYY-MM-DD 格式。");
@@ -129,7 +136,8 @@ function parseFoodLog(input: unknown): FoodLog {
     foodId: string(input.foodId, "食物 ID", 100),
     name: string(input.name, "食物名称"),
     emoji: string(input.emoji, "食物图标", 32),
-    grams: number(input.grams, "食物重量", 0.1, 10_000),
+    grams: number(input.grams, "食物用量", 0.1, 10_000),
+    unit: foodUnit(input.unit),
     meal: input.meal as Meal,
     date: dateString(input.date),
     kcal: number(input.kcal, "食物热量", 0, 100_000),
@@ -161,21 +169,24 @@ function parseCustomFood(input: unknown): Food {
     throw new Error("自定义食物 ID 格式无效。");
   }
   if (input.category !== "自定义") throw new Error("自定义食物分类无效。");
+  const unit = foodUnit(input.unit);
+  const nutritionBasis = unit === "ml" ? "每 100 毫升" : "每百克";
   const food: Food = {
     id,
     name: string(input.name, "自定义食物名称", 100),
     category: "自定义",
     emoji: string(input.emoji, "自定义食物图标", 32),
-    kcal: number(input.kcal, "每百克热量", 0, 1000),
-    protein: number(input.protein, "每百克蛋白质", 0, 100),
-    carbs: number(input.carbs, "每百克碳水化合物", 0, 100),
-    fat: number(input.fat, "每百克脂肪", 0, 100),
+    kcal: number(input.kcal, `${nutritionBasis}热量`, 0, 1000),
+    protein: number(input.protein, `${nutritionBasis}蛋白质`, 0, 100),
+    carbs: number(input.carbs, `${nutritionBasis}碳水化合物`, 0, 100),
+    fat: number(input.fat, `${nutritionBasis}脂肪`, 0, 100),
     portion: string(input.portion, "自定义食物份量名称", 100),
-    portionGrams: number(input.portionGrams, "一份食物重量", 0.1, 2000),
+    portionGrams: number(input.portionGrams, "一份食物用量", 0.1, 2000),
+    unit,
   };
   if (food.protein + food.carbs + food.fat > 101) {
     throw new Error(
-      "每百克食物的蛋白质、碳水和脂肪总量不能超过 100 克（允许 1 克的标签舍入误差）。",
+      `${nutritionBasis}食物的蛋白质、碳水和脂肪总量不能超过 100 克（允许 1 克的标签舍入误差）。`,
     );
   }
   if (input.keywords !== undefined) {
@@ -184,6 +195,8 @@ function parseCustomFood(input: unknown): Food {
     }
     food.keywords = input.keywords;
   }
+  if (input.note !== undefined)
+    food.note = string(input.note, "食物参考说明", 500);
   return food;
 }
 
@@ -320,6 +333,8 @@ export function makeCustomFood(input: {
   carbs: number;
   fat: number;
   portionGrams: number;
+  unit?: "g" | "ml";
+  note?: string;
 }): Food {
   if (!isObject(input)) throw new Error("自定义食物格式无效。");
   return parseCustomFood({
@@ -333,6 +348,8 @@ export function makeCustomFood(input: {
     fat: input.fat,
     portion: "1 份",
     portionGrams: input.portionGrams,
+    unit: input.unit,
+    note: input.note,
   });
 }
 
@@ -342,20 +359,23 @@ export function makeFoodLog(
   meal: Meal,
   date: string,
 ): FoodLog {
-  number(grams, "食物重量", 0.1, 10_000);
+  number(grams, "食物用量", 0.1, 10_000);
   const factor = grams / 100;
+  const unit = foodUnit(food.unit);
+  const nutritionBasis = unit === "ml" ? "每 100 毫升" : "每百克";
   return parseFoodLog({
     id: uuid(),
     foodId: food.id,
     name: food.name,
     emoji: food.emoji,
     grams,
+    unit,
     meal,
     date,
-    kcal: number(food.kcal, "每百克热量", 0, 1000) * factor,
-    protein: number(food.protein, "每百克蛋白质", 0, 100) * factor,
-    carbs: number(food.carbs, "每百克碳水化合物", 0, 100) * factor,
-    fat: number(food.fat, "每百克脂肪", 0, 100) * factor,
+    kcal: number(food.kcal, `${nutritionBasis}热量`, 0, 1000) * factor,
+    protein: number(food.protein, `${nutritionBasis}蛋白质`, 0, 100) * factor,
+    carbs: number(food.carbs, `${nutritionBasis}碳水化合物`, 0, 100) * factor,
+    fat: number(food.fat, `${nutritionBasis}脂肪`, 0, 100) * factor,
   });
 }
 
