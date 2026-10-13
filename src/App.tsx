@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   BookOpen,
   Check,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -42,14 +43,15 @@ import {
 } from "./lib";
 import type { AppState, Activity, Food, Meal, Profile } from "./types";
 import CustomFoodForm from "./CustomFoodForm";
+import TrainingPlanner from "./TrainingPlanner";
 import { searchFoods } from "./food-search";
 import { summarizeTrainingWeek } from "./training-plan";
 
-type View = "overview" | "diary" | "exercise" | "library" | "profile";
+type View = "overview" | "diary" | "exercise" | "library" | "plan" | "profile";
 type FoodRecordDraft = { amount: string; meal: Meal; date: string };
 type Modal =
   | { kind: "food"; selected?: Food; draft?: FoodRecordDraft }
-  | { kind: "exercise"; selected?: Activity };
+  | { kind: "exercise"; selected?: Activity; suggestedMinutes?: number };
 const meals: Meal[] = ["早餐", "午餐", "晚餐", "加餐"];
 const mealEmojis = ["🌤️", "🍲", "🌙", "🍎"];
 const navItems = [
@@ -57,6 +59,7 @@ const navItems = [
   { id: "diary" as View, label: "饮食记录", icon: Utensils },
   { id: "exercise" as View, label: "运动记录", icon: ActivityIcon },
   { id: "library" as View, label: "食物图鉴", icon: BookOpen },
+  { id: "plan" as View, label: "健身计划", icon: CalendarDays },
   { id: "profile" as View, label: "身体档案", icon: Settings2 },
 ];
 const fmt = (n: number) => Math.round(n).toLocaleString("zh-CN");
@@ -291,6 +294,11 @@ export default function App() {
       "从了解自己开始。",
       "让热量预算，适合你的身体和生活方式。",
     ],
+    plan: [
+      "ONE DAY AT A TIME",
+      "每天练什么，一目了然。",
+      "按目标和身体状况安排训练，动作、时长与教学入口都在这里。",
+    ],
   };
   return (
     <>
@@ -372,13 +380,15 @@ export default function App() {
               <button
                 className="button primary"
                 onClick={() =>
-                  view === "exercise"
+                  view === "exercise" || view === "plan"
                     ? setModal({ kind: "exercise" })
                     : openFood()
                 }
               >
                 <Plus size={18} />
-                {view === "exercise" ? "记录运动" : "记录饮食"}
+                {view === "exercise" || view === "plan"
+                  ? "记录运动"
+                  : "记录饮食"}
               </button>
             )}
           </div>
@@ -427,7 +437,7 @@ export default function App() {
             </div>
           </div>
         )}
-        {view !== "profile" && view !== "library" && (
+        {view !== "profile" && view !== "library" && view !== "plan" && (
           <div className="section-heading daily-heading">
             <h2>
               {date === today ? "今天" : dateText(date)}
@@ -1075,6 +1085,54 @@ export default function App() {
               项匹配食物。食物数据为参考估算，部分细分水果与品牌条目沿用同类通用数据。克与毫升不会自动转换，请按条目单位记录；标注「熟」的食物按熟重记录。包装食品可在记录时点「按我的包装修正」，另存自己的标签数据。
             </p>
           </>
+        )}
+        {view === "plan" && (
+          <TrainingPlanner
+            profile={state.profile}
+            date={date}
+            preferences={state.trainingPreferences}
+            completedDates={state.completedWorkoutDates}
+            onDateChange={(nextDate) => {
+              try {
+                setDate(shiftDate(nextDate, 0));
+              } catch {
+                notify("请选择 1900 至 2199 年之间的有效日期");
+              }
+            }}
+            onSavePreferences={(preferences) => {
+              setState((s) => ({ ...s, trainingPreferences: preferences }));
+              notify("训练偏好已保存，每日计划已更新");
+            }}
+            onToggleComplete={(workoutDate) => {
+              if (
+                !state.completedWorkoutDates.includes(workoutDate) &&
+                state.completedWorkoutDates.length >= 10000
+              ) {
+                notify("完成记录已达 10,000 天，请先导出备份");
+                return;
+              }
+              const completed =
+                state.completedWorkoutDates.includes(workoutDate);
+              setState((s) => ({
+                ...s,
+                completedWorkoutDates: completed
+                  ? s.completedWorkoutDates.filter((day) => day !== workoutDate)
+                  : [...s.completedWorkoutDates, workoutDate],
+              }));
+              notify(
+                completed ? "已取消这天的完成标记" : "已标记这天的计划完成",
+              );
+            }}
+            onRecordActivity={(activityId, minutes) => {
+              setModal({
+                kind: "exercise",
+                selected: activities.find(
+                  (activity) => activity.id === activityId,
+                ),
+                suggestedMinutes: minutes,
+              });
+            }}
+          />
         )}
         {view === "profile" && (
           <>
@@ -1727,7 +1785,9 @@ function RecordModal({
             ? (modal.selected as Food).portionGrams
             : isFood
               ? 100
-              : 30,
+              : modal.kind === "exercise"
+                ? (modal.suggestedMinutes ?? 30)
+                : 30,
         ),
   );
   const [logWeight, setLogWeight] = useState(weight ? String(weight) : "");
@@ -2099,7 +2159,7 @@ function RecordModal({
                 </div>
                 <p className="card-footnote">
                   {isFood
-                    ? `请按${foodUnit(selected as Food)}记录用量，克与毫升不自动转换。熟食按熟重记录，包装食品以标签为准。`
+                    ? `请按${foodUnit(selected as Food)}记录用量，克与毫升不自动转换。肉类、水产请扣除骨头和壳，按条目标明的生熟、带皮状态称可食部分；熟食按熟重记录，包装食品以标签为准。`
                     : "已扣除同一时段的静息消耗。实际消耗受运动强度和个人状态影响。"}
                 </p>
               </>

@@ -340,7 +340,7 @@ export const regionalFoods: Food[] = [
       1.7,
       "1 碗",
       350,
-      "xiazimi an shrimp roe noodle soup 扬州虾籽面",
+      "xiazimian shrimp roe noodle soup 扬州虾籽面",
     ],
     [
       "ext-regional-suzhou-pork-noodles",

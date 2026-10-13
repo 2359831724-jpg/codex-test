@@ -6,14 +6,29 @@ import type {
   FoodLog,
   Meal,
   Profile,
+  TrainingPreferences,
 } from "./types";
 
 export const STORAGE_KEY = "calorie-studio:v1";
+export const DEFAULT_TRAINING_PREFERENCES: Readonly<TrainingPreferences> =
+  Object.freeze({
+    equipment: "gym",
+    sessionMinutes: 45,
+    experience: "beginner",
+    avoidImpact: true,
+    avoidKneeLoad: true,
+    avoidWristLoad: false,
+    avoidOverhead: false,
+    preferredStartTime: "10:00",
+    unavailableStart: "17:00",
+    unavailableEnd: "18:00",
+  });
 
 const MEALS: readonly Meal[] = ["早餐", "午餐", "晚餐", "加餐"];
 const ACTIVITY_LEVELS = [1.2, 1.375, 1.55, 1.725];
 const MAX_LOGS = 100_000;
 const MAX_CUSTOM_FOODS = 2000;
+const MAX_COMPLETED_WORKOUT_DATES = 10_000;
 
 export function emptyState(): AppState {
   return {
@@ -22,6 +37,8 @@ export function emptyState(): AppState {
     foodLogs: [],
     exerciseLogs: [],
     customFoods: [],
+    trainingPreferences: { ...DEFAULT_TRAINING_PREFERENCES },
+    completedWorkoutDates: [],
   };
 }
 
@@ -64,7 +81,11 @@ function foodUnit(input: unknown): "g" | "ml" {
 }
 
 function dateString(input: unknown): string {
-  if (typeof input !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+  if (
+    typeof input !== "string" ||
+    input.length !== 10 ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(input)
+  ) {
     throw new Error("记录日期必须使用 YYYY-MM-DD 格式。");
   }
   const [year, month, day] = input.split("-").map(Number);
@@ -79,6 +100,108 @@ function dateString(input: unknown): string {
     throw new Error("记录日期无效。");
   }
   return input;
+}
+
+function timeString(input: unknown, name: string): string {
+  if (
+    typeof input !== "string" ||
+    input.length !== 5 ||
+    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(input)
+  ) {
+    throw new Error(`${name}必须使用有效的 HH:mm 格式。`);
+  }
+  return input;
+}
+
+function timeMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+/** Validate saved preferences without mutating them or generating exercise logs. */
+export function parseTrainingPreferences(input: unknown): TrainingPreferences {
+  if (!isObject(input)) throw new Error("训练偏好格式无效。");
+  if (
+    Object.keys(input).some(
+      (key) => !Object.hasOwn(DEFAULT_TRAINING_PREFERENCES, key),
+    )
+  ) {
+    throw new Error("训练偏好包含不支持的字段。");
+  }
+  if (
+    input.equipment !== "none" &&
+    input.equipment !== "dumbbells" &&
+    input.equipment !== "gym"
+  ) {
+    throw new Error("请选择有效的训练器械条件。");
+  }
+  if (
+    input.sessionMinutes !== 20 &&
+    input.sessionMinutes !== 30 &&
+    input.sessionMinutes !== 45 &&
+    input.sessionMinutes !== 60
+  ) {
+    throw new Error("单次训练时长需为 20、30、45 或 60 分钟。");
+  }
+  if (input.experience !== "beginner" && input.experience !== "regular") {
+    throw new Error("请选择有效的训练经验。");
+  }
+  for (const key of [
+    "avoidImpact",
+    "avoidKneeLoad",
+    "avoidWristLoad",
+    "avoidOverhead",
+  ] as const) {
+    if (typeof input[key] !== "boolean") {
+      throw new Error("训练动作限制必须是布尔值。");
+    }
+  }
+  const preferredStartTime = timeString(
+    input.preferredStartTime,
+    "训练开始时间",
+  );
+  const startMinutes = timeMinutes(preferredStartTime);
+  const endMinutes = startMinutes + input.sessionMinutes;
+  if (endMinutes > 24 * 60) {
+    throw new Error("训练最晚需在当天 24:00 结束，请提前开始时间或缩短时长。");
+  }
+  let unavailableStart = "";
+  let unavailableEnd = "";
+  if (input.unavailableStart !== "" || input.unavailableEnd !== "") {
+    unavailableStart = timeString(input.unavailableStart, "不可用时段开始时间");
+    unavailableEnd = timeString(input.unavailableEnd, "不可用时段结束时间");
+    const blockedStart = timeMinutes(unavailableStart);
+    const blockedEnd = timeMinutes(unavailableEnd);
+    if (blockedStart >= blockedEnd) {
+      throw new Error("不可用时段的结束时间需晚于开始时间，且不能跨天。");
+    }
+    if (startMinutes < blockedEnd && endMinutes > blockedStart) {
+      throw new Error("训练时间与不可用时段重叠，请调整开始时间或训练时长。");
+    }
+  }
+  return {
+    equipment: input.equipment,
+    sessionMinutes: input.sessionMinutes,
+    experience: input.experience,
+    avoidImpact: input.avoidImpact as boolean,
+    avoidKneeLoad: input.avoidKneeLoad as boolean,
+    avoidWristLoad: input.avoidWristLoad as boolean,
+    avoidOverhead: input.avoidOverhead as boolean,
+    preferredStartTime,
+    unavailableStart,
+    unavailableEnd,
+  };
+}
+
+function parseCompletedWorkoutDates(input: unknown): string[] {
+  if (!Array.isArray(input) || input.length > MAX_COMPLETED_WORKOUT_DATES) {
+    throw new Error("训练完成日期列表格式无效，或超过 10,000 项上限。");
+  }
+  const dates = Array.from(input, dateString);
+  if (new Set(dates).size !== dates.length) {
+    throw new Error("数据中存在重复的训练完成日期。");
+  }
+  return dates;
 }
 
 function bmrValue(profile: Profile): number {
@@ -227,6 +350,14 @@ export function parseState(input: unknown): AppState {
     foodLogs: input.foodLogs.map(parseFoodLog),
     exerciseLogs: input.exerciseLogs.map(parseExerciseLog),
     customFoods: customFoods.map(parseCustomFood),
+    trainingPreferences:
+      input.trainingPreferences === undefined
+        ? { ...DEFAULT_TRAINING_PREFERENCES }
+        : parseTrainingPreferences(input.trainingPreferences),
+    completedWorkoutDates:
+      input.completedWorkoutDates === undefined
+        ? []
+        : parseCompletedWorkoutDates(input.completedWorkoutDates),
   };
   const ids = new Set<string>();
   for (const log of [...state.foodLogs, ...state.exerciseLogs]) {

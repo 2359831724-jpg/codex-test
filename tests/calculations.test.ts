@@ -590,6 +590,7 @@ test("daily summaries combine both meals and exclude other dates", () => {
 
 test("import validates schema, numbers, dates and record identity without mutating input", () => {
   const state = {
+    ...emptyState(),
     version: 1 as const,
     profile,
     foodLogs: [makeFoodLog(rice, 100, "午餐", "2026-10-12")],

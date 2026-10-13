@@ -69,10 +69,24 @@ export interface Profile {
   activityLevel: number;
   goal: "lose" | "maintain" | "gain" | "strictLoss" | "extremeLoss";
 }
+export interface TrainingPreferences {
+  equipment: "none" | "dumbbells" | "gym";
+  sessionMinutes: 20 | 30 | 45 | 60;
+  experience: "beginner" | "regular";
+  avoidImpact: boolean;
+  avoidKneeLoad: boolean;
+  avoidWristLoad: boolean;
+  avoidOverhead: boolean;
+  preferredStartTime: string;
+  unavailableStart: string;
+  unavailableEnd: string;
+}
 export interface AppState {
   version: 1;
   profile: Profile | null;
   foodLogs: FoodLog[];
   exerciseLogs: ExerciseLog[];
   customFoods: Food[];
+  trainingPreferences: TrainingPreferences;
+  completedWorkoutDates: string[];
 }

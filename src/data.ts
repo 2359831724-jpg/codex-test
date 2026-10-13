@@ -9,6 +9,10 @@ import { createBrandFoods } from "./foods-branded";
 import { regionalFoods } from "./foods-regional-more";
 import { extraProteinFoods } from "./foods-protein-more";
 import { marketFoods } from "./foods-market-more";
+import { poultryCutFoods } from "./foods-poultry-cuts";
+import { livestockCutFoods } from "./foods-livestock-cuts";
+import { seafoodCutFoods } from "./foods-seafood-cuts";
+import { cookingFoods } from "./foods-cooking-methods";
 
 // 食物为常见可食用状态下每 100 g 的参考估算，unit=ml 时按每 100 ml；
 // 品牌、配方和烹调会影响数值。运动 MET 参考 2011/2024 活动代谢当量汇编
@@ -31,6 +35,37 @@ export const activityCategories: ActivityCategory[] = [
   "日常活动",
   "身心训练",
 ];
+
+// Animal and part names are search parents, so 鸭肉 finds duck cuts and 鸡腿
+// includes thighs/drumsticks. A specific cut query still needs that cut's words.
+function withMeatSearchParents(food: Food): Food {
+  if (food.category !== "肉蛋水产" || /蛋|牛蛙|鸭嘴|兔鱼/.test(food.name))
+    return food;
+  const species = [
+    "火鸡",
+    "鸭",
+    "鹅",
+    "鸡",
+    "猪",
+    "牛",
+    "绵羊",
+    "山羊",
+    "羊",
+    "兔",
+  ].find((animal) => food.name.includes(animal));
+  if (!species) return food;
+  const parent = species === "绵羊" || species === "山羊" ? "羊" : species;
+  const keywords = [`${species}肉`, `${parent}肉`];
+  if (/腿/.test(food.name)) keywords.push(`${species}腿`, `${parent}腿`);
+  if (/胸/.test(food.name)) keywords.push(`${species}胸`, `${parent}胸`);
+  if (/翅/.test(food.name)) keywords.push(`${species}翅`, `${parent}翅`);
+  if (/脖|颈/.test(food.name)) keywords.push(`${species}脖`, `${parent}脖`);
+  if (/熟|烤|卤|煮|蒸|炖|煎|炸/.test(food.name)) keywords.push("熟");
+  return {
+    ...food,
+    keywords: `${food.keywords ?? ""} ${[...new Set(keywords)].join(" ")}`,
+  };
+}
 
 const baseFoods: Food[] = [
   ...foodGroup("主食谷物", [
@@ -406,7 +441,7 @@ const baseFoods: Food[] = [
       2.1,
       "1 份",
       120,
-      "turkey",
+      "huoji huo ji xiongrou turkey breast cooked 熟 火鸡胸",
     ],
     [
       "lean-beef",
@@ -466,7 +501,7 @@ const baseFoods: Food[] = [
       21.8,
       "1 份",
       100,
-      "paigu ribs",
+      "paigu pork ribs cooked 熟 猪小排 小排",
     ],
     [
       "lamb",
@@ -1739,8 +1774,14 @@ const baseFoods: Food[] = [
   ...regionalFoods,
   ...extraProteinFoods,
   ...marketFoods,
+  ...poultryCutFoods,
+  ...livestockCutFoods,
+  ...seafoodCutFoods,
+  ...cookingFoods,
 ].map((food) =>
-  food.id === "olive-oil" ? { ...food, category: "调味与油脂" as const } : food,
+  food.id === "olive-oil"
+    ? { ...food, category: "调味与油脂" as const }
+    : withMeatSearchParents(food),
 );
 
 // 品牌条目用于按常见商品名称寻找同类参考，不代表已核验该商品的标签。
@@ -1788,6 +1829,30 @@ const activityGroup = (
 
 export const activities: Activity[] = [
   ...activityGroup("有氧运动", [
+    [
+      "arm-ergometer-easy",
+      "上肢功率车（轻阻力）",
+      "🚴",
+      2.5,
+      "低强度",
+      "坐姿手摇功率车，轻阻力；按实际时长记录，MET 为通用参考估算",
+    ],
+    [
+      "arm-ergometer-moderate",
+      "上肢功率车（中等阻力）",
+      "🚴",
+      3.5,
+      "中强度",
+      "坐姿手摇功率车，中等阻力；强度和体感因人而异，MET 为通用参考估算",
+    ],
+    [
+      "seated-arm-movement",
+      "坐姿上肢活动（轻量）",
+      "🪑",
+      1.8,
+      "低强度",
+      "舒适范围内坐姿摆臂，不加负重；按实际时长记录，MET 为通用参考估算",
+    ],
     ["walk-slow", "慢走", "🚶", 2.8, "低强度", "平地约 3 km/h，轻松散步"],
     ["walk-normal", "步行", "🚶", 3.5, "中强度", "平地约 4.5 km/h，正常步速"],
     [

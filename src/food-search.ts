@@ -114,6 +114,14 @@ const unrelatedNames = [
   { terms: ["菠萝", "凤梨", "pineapple"], names: ["菠萝蜜"] },
   { terms: ["木耳", "黑木耳"], names: ["木耳菜"] },
   {
+    terms: ["眼肉", "牛眼肉", "肋眼", "ribeye"],
+    names: ["桂圆", "龙眼", "longan"],
+  },
+  {
+    terms: ["黄瓜", "青瓜", "小黄瓜", "cucumber"],
+    names: ["小黄瓜条", "eyeround", "eyeofround"],
+  },
+  {
     terms: ["花菜", "菜花", "花椰菜"],
     names: ["绿花椰菜", "青花菜", "西兰花"],
   },
@@ -124,6 +132,20 @@ function relatedToQuery(
   terms: string[],
   fullQuery: string,
 ): boolean {
+  const chickenPart = terms.some(
+    (term) =>
+      term.startsWith("chicken") ||
+      /^鸡(?:$|肉|腿|小腿|大腿|全腿|胸|翅|爪|脚|肝|心|胗|脖|颈|头|架|皮|里脊)/u.test(
+        term,
+      ),
+  );
+  if (
+    chickenPart &&
+    (name.includes("火鸡") || name.includes("turkey")) &&
+    !fullQuery.includes("火鸡") &&
+    !fullQuery.includes("turkey")
+  )
+    return false;
   return !unrelatedNames.some(
     (rule) =>
       rule.terms.some((term) => terms.includes(term)) &&

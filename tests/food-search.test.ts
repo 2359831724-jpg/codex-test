@@ -26,6 +26,114 @@ function food(
 }
 const ids = (foods: Food[]) => foods.map((item) => item.id);
 
+test("cooking-method queries find prepared foods and preserve oil differences", () => {
+  for (const query of ["烤土豆", "烤马铃薯", "baked potato"]) {
+    const matches = searchFoods(foods, query);
+    assert.ok(
+      matches.some((food) => food.id === "ext-cooking-potato-baked-plain"),
+      query,
+    );
+    assert.ok(
+      matches.some((food) => food.id === "ext-cooking-potato-baked-oil"),
+      query,
+    );
+    assert.ok(
+      matches.every((food) => !/水煮/.test(food.name)),
+      query,
+    );
+  }
+  const plain = foods.find(
+    (food) => food.id === "ext-cooking-potato-baked-plain",
+  )!;
+  const oil = foods.find((food) => food.id === "ext-cooking-potato-baked-oil")!;
+  assert.ok(oil.fat > plain.fat);
+  assert.ok(oil.kcal > plain.kcal);
+  assert.ok(
+    searchFoods(foods, "空气炸土豆").every((food) => /空气炸/.test(food.name)),
+  );
+  assert.ok(
+    searchFoods(foods, "牛奶土豆泥").some((food) =>
+      /土豆泥.*牛奶/.test(food.name),
+    ),
+  );
+});
+
+test("meat families expose common cuts and regional cut names find the correct part", () => {
+  const cases = [
+    ["鸭肉", "ext-poultry-cut-duck-leg-skin-raw"],
+    ["鸭腿", "ext-poultry-cut-duck-leg-skinless-raw"],
+    ["鸭腿", "ext-poultry-cut-duck-drumstick-skinless-raw"],
+    ["duck drumstick", "ext-poultry-cut-duck-drumstick-skin-raw"],
+    ["鸡腿", "ext-poultry-cut-chicken-thigh-skinless-raw"],
+    ["鸡腿", "ext-poultry-cut-chicken-drumstick-skinless-raw"],
+    ["猪肉", "ext-livestock-cut-pork-collar-raw"],
+    ["猪肩颈肉", "ext-livestock-cut-pork-collar-raw"],
+    ["猪肘子 熟", "ext-livestock-cut-pork-front-hock-skin-cooked"],
+    ["菲力", "ext-livestock-cut-beef-tenderloin-raw"],
+    ["西冷牛排", "ext-livestock-cut-beef-striploin-raw"],
+    ["羊腿", "ext-livestock-cut-lamb-leg-lean-raw"],
+    ["cod fillet", "ext-seafood-cut-atlantic-cod-loin-steamed"],
+    ["turkey breast", "turkey"],
+  ];
+  for (const [query, id] of cases) {
+    assert.ok(
+      ids(searchFoods(foods, query)).includes(id),
+      `${query} should find ${id}`,
+    );
+  }
+  assert.ok(!ids(searchFoods(foods, "鸭腿")).includes("duck"));
+});
+
+test("specific chicken and steak cuts do not match turkey, longan or vegetables", () => {
+  for (const query of ["鸡腿", "鸡胸", "鸡翅", "鸡小腿", "鸡肉", "鸡腿肉 熟"]) {
+    const matches = searchFoods(foods, query);
+    assert.ok(matches.length > 0, query);
+    assert.ok(
+      matches.every((food) => !food.name.includes("火鸡")),
+      query,
+    );
+  }
+  assert.ok(
+    searchFoods(foods, "火鸡腿").some((food) => food.name.includes("火鸡")),
+  );
+  assert.ok(
+    searchFoods(foods, "眼肉").every((food) => !/桂圆|龙眼/.test(food.name)),
+  );
+  assert.ok(
+    searchFoods(foods, "龙眼肉").some((food) => /桂圆|龙眼/.test(food.name)),
+  );
+  for (const query of ["黄瓜", "青瓜"]) {
+    assert.ok(
+      searchFoods(foods, query).every(
+        (food) => !food.id.startsWith("ext-livestock-cut-"),
+      ),
+    );
+  }
+  assert.ok(
+    searchFoods(foods, "小黄瓜条").some((food) =>
+      food.id.startsWith("ext-livestock-cut-"),
+    ),
+  );
+});
+
+test("cut nutrition preserves skin and belly fat differences instead of copying the whole animal", () => {
+  const find = (id: string) => {
+    const food = foods.find((food) => food.id === id);
+    assert.ok(food, id);
+    return food;
+  };
+  const skin = find("ext-poultry-cut-duck-leg-skin-raw");
+  const skinless = find("ext-poultry-cut-duck-leg-skinless-raw");
+  assert.ok(skin.fat > skinless.fat);
+  assert.ok(skin.kcal > skinless.kcal);
+  assert.notDeepEqual(
+    [skin.kcal, skin.protein, skin.fat],
+    [find("duck").kcal, find("duck").protein, find("duck").fat],
+  );
+  assert.match(skin.name, /生.*带皮.*去骨/);
+  assert.match(skinless.name, /生.*去皮.*去骨/);
+});
+
 test("new regional dishes and ingredients can be found by dish names and local aliases", () => {
   const cases = [
     ["锅包肉", "ext-regional-guobaorou"],
