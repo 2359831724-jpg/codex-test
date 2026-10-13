@@ -102,7 +102,7 @@ export function validateProfile(profile: Profile): string | null {
     return "体脂率需在 3%–65% 之间，或留空。";
   if (!ACTIVITY_LEVELS.includes(profile.activityLevel))
     return "请选择有效的日常活动水平。";
-  if (!["lose", "maintain", "gain"].includes(profile.goal))
+  if (!["lose", "maintain", "gain", "strictLoss"].includes(profile.goal))
     return "请选择有效的目标。";
   const estimatedBmr = bmrValue(profile);
   if (!Number.isFinite(estimatedBmr) || estimatedBmr <= 0)
@@ -285,16 +285,77 @@ export function calculateBudget(profile: Profile): {
   maintenance: number;
   target: number;
   method: string;
+  bmi: number;
+  requestedDeficit: number;
+  actualDeficit: number;
+  floorApplied: boolean;
+  effectiveStatus:
+    "maintain" | "lose" | "gain" | "strictLoss" | "bmrFloor" | "lowBmi";
 } {
   const { value: bmr, method } = calculateBmr(profile);
   const maintenance = bmr * profile.activityLevel;
-  const adjustment =
-    profile.goal === "lose" ? -300 : profile.goal === "gain" ? 250 : 0;
+  const bmi = profile.weight / (profile.height / 100) ** 2;
+  const requestedDeficit =
+    profile.goal === "strictLoss"
+      ? Math.min(maintenance * 0.2, 500)
+      : profile.goal === "lose"
+        ? 300
+        : 0;
+  const lowBmi = profile.goal === "strictLoss" && bmi < 18.5;
+  const requestedTarget =
+    maintenance -
+    (lowBmi ? 0 : requestedDeficit) +
+    (profile.goal === "gain" ? 250 : 0);
+  const target = Math.max(bmr, requestedTarget);
+  const floorApplied = requestedTarget < bmr;
   return {
     bmr,
     maintenance,
-    target: Math.max(bmr, maintenance + adjustment),
+    target,
     method,
+    bmi,
+    requestedDeficit,
+    actualDeficit: Math.max(0, maintenance - target),
+    floorApplied,
+    effectiveStatus: lowBmi
+      ? "lowBmi"
+      : floorApplied
+        ? "bmrFloor"
+        : profile.goal,
+  };
+}
+
+export function calculateNutritionTargets(
+  profile: Profile,
+  calorieTarget?: number,
+): {
+  protein: number;
+  carbs: number;
+  fat: number;
+  proteinReference: number;
+  proteinLimited: boolean;
+} {
+  const budget = calculateBudget(profile);
+  const target =
+    calorieTarget === undefined
+      ? budget.target
+      : number(calorieTarget, "每日热量预算", 1, 100_000);
+  const strict = profile.goal === "strictLoss";
+  const proteinReference = profile.weight * (strict ? 2 : 1.2);
+  // Standard calculated budgets preserve the original 1.2 g/kg reference.
+  // An unusually small explicit override still needs room for the 25% fat share.
+  const protein = Math.min(
+    proteinReference,
+    (target * (strict ? 0.35 : 0.75)) / 4,
+  );
+  const fat = (target * 0.25) / 9;
+  const carbs = Math.max(0, (target - protein * 4 - fat * 9) / 4);
+  return {
+    protein,
+    carbs,
+    fat,
+    proteinReference,
+    proteinLimited: protein < proteinReference,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleHelp,
   Download,
+  Dumbbell,
   Flame,
   Heart,
   Leaf,
@@ -32,6 +33,7 @@ import {
   localDate,
   shiftDate,
   calculateBudget,
+  calculateNutritionTargets,
   exerciseCalories,
   makeFoodLog,
   makeExerciseLog,
@@ -41,6 +43,7 @@ import {
 import type { AppState, Activity, Food, Meal, Profile } from "./types";
 import CustomFoodForm from "./CustomFoodForm";
 import { searchFoods } from "./food-search";
+import { summarizeTrainingWeek } from "./training-plan";
 
 type View = "overview" | "diary" | "exercise" | "library" | "profile";
 type FoodRecordDraft = { amount: string; meal: Meal; date: string };
@@ -123,6 +126,20 @@ export default function App() {
   );
   const budget = state.profile ? calculateBudget(state.profile) : null;
   const target = budget?.target ?? 2000;
+  const isStrict = state.profile?.goal === "strictLoss";
+  const nutrition = state.profile
+    ? calculateNutritionTargets(state.profile, target)
+    : {
+        protein: 72,
+        carbs: (2000 * 0.75 - 72 * 4) / 4,
+        fat: (2000 * 0.25) / 9,
+        proteinReference: 72,
+        proteinLimited: false,
+      };
+  const trainingWeek = useMemo(
+    () => summarizeTrainingWeek(state.exerciseLogs, activities, date),
+    [state.exerciseLogs, date],
+  );
   const remaining = target + summary.exercise - summary.intake;
   const totalBurn = (budget?.maintenance ?? 0) + summary.exercise;
   const notify = (message: string) => setToast(message);
@@ -483,7 +500,11 @@ export default function App() {
                     <Flame size={18} /> 今日能量
                   </h2>
                   <span className="subtle-pill">
-                    {budget ? "个性化预算" : "参考预算"}
+                    {isStrict
+                      ? "严格减脂塑形"
+                      : budget
+                        ? "个性化预算"
+                        : "参考预算"}
                   </span>
                 </div>
                 <div className="energy-body">
@@ -585,26 +606,23 @@ export default function App() {
                     {
                       name: "蛋白质",
                       value: summary.protein,
-                      target: (state.profile?.weight ?? 60) * 1.2,
+                      target: nutrition.protein,
                       color: "#7e9b80",
-                      label: "身体的修复能量",
+                      label: isStrict
+                        ? "减脂期的训练恢复参考目标"
+                        : "身体的修复能量",
                     },
                     {
                       name: "碳水化合物",
                       value: summary.carbs,
-                      target: Math.max(
-                        0,
-                        (target * 0.75 -
-                          (state.profile?.weight ?? 60) * 1.2 * 4) /
-                          4,
-                      ),
+                      target: nutrition.carbs,
                       color: "#d9b56c",
                       label: "日常的活力来源",
                     },
                     {
                       name: "脂肪",
                       value: summary.fat,
-                      target: (target * 0.25) / 9,
+                      target: nutrition.fat,
                       color: "#cb947e",
                       label: "不可或缺的好营养",
                     },
@@ -633,7 +651,7 @@ export default function App() {
                         <div
                           className="macro-fill"
                           style={{
-                            width: `${Math.min((m.value / m.target) * 100, 100)}%`,
+                            width: `${m.target > 0 ? Math.min((m.value / m.target) * 100, 100) : m.value > 0 ? 100 : 0}%`,
                             background: m.color,
                           }}
                         />
@@ -644,10 +662,20 @@ export default function App() {
                 </div>
                 <div className="inline-note">
                   <CircleHelp size={14} />
-                  营养目标为一般参考，可随日常饮食灵活调整。
+                  {isStrict
+                    ? `严格模式蛋白质按体重 × 2 g 参考${nutrition.proteinLimited ? "，已按热量占比上限调整" : ""}；脂肪占预算 25%，碳水补足余量。`
+                    : "营养目标为一般参考，可随日常饮食灵活调整。"}
                 </div>
               </section>
             </div>
+            {isStrict && state.profile && budget && (
+              <StrictPlan
+                profile={state.profile}
+                budget={budget}
+                week={trainingWeek}
+                onExercise={() => setView("exercise")}
+              />
+            )}
             <div className="section-heading">
               <h2>
                 一日三餐，还有小美好 <span>DAILY MEALS</span>
@@ -1187,6 +1215,118 @@ export default function App() {
     </>
   );
 }
+function StrictPlan({
+  profile,
+  budget,
+  preview = false,
+  week,
+  onExercise,
+}: {
+  profile: Profile;
+  budget: ReturnType<typeof calculateBudget>;
+  preview?: boolean;
+  week?: ReturnType<typeof summarizeTrainingWeek>;
+  onExercise?: () => void;
+}) {
+  const nutrition = calculateNutritionTargets(profile, budget.target);
+  return (
+    <section className="card strict-plan" aria-label="严格减脂塑形计划">
+      <div className="strict-plan-heading">
+        <Dumbbell size={18} />
+        <h2>严格减脂塑形计划</h2>
+        <span className="strict-mode-badge">
+          {preview ? "保存后启用" : "已启用"}
+        </span>
+      </div>
+      <div className="strict-plan-grid">
+        <div className="strict-plan-item">
+          <h4>
+            <Flame size={15} /> 热量与营养
+          </h4>
+          <p>
+            基础预算 <strong>{fmt(budget.target)} kcal / 天</strong>，实际缺口{" "}
+            <strong>{fmt(budget.actualDeficit)} kcal</strong>。
+          </p>
+          <p>
+            计划缺口至多为日常消耗的 20%，最多 500
+            kcal；预算不低于估算基础代谢。
+          </p>
+          {budget.effectiveStatus === "lowBmi" ? (
+            <small>
+              当前 BMI 低于 18.5，本模式采用维持热量，继续记录营养和训练。
+            </small>
+          ) : budget.floorApplied ? (
+            <small>已到估算基础代谢下限，当前实际缺口小于计划值。</small>
+          ) : null}
+          <p>
+            每日参考：蛋白质 <strong>{fmt(nutrition.protein)} g</strong> · 碳水{" "}
+            <strong>{fmt(nutrition.carbs)} g</strong> · 脂肪{" "}
+            <strong>{fmt(nutrition.fat)} g</strong>。
+          </p>
+          <small>
+            蛋白质按体重 × 2 g 计算，上限为基础预算的 35%；脂肪占
+            25%，碳水补足余量。
+            {nutrition.proteinLimited ? "当前蛋白质目标已按占比上限调整。" : ""}
+          </small>
+          <small>
+            运动净消耗仍加入当天可摄入预算；只记录日常活动系数之外的额外运动。
+          </small>
+        </div>
+        <div className="strict-plan-item">
+          <h4>
+            <Dumbbell size={15} /> 力量与有氧
+          </h4>
+          <p>
+            力量参考安排：每周 <strong>3 天</strong>，每次 20～45
+            分钟。隔天安排全身力量，循序增加训练量。
+          </p>
+          <p>
+            有氧参考安排：每周 <strong>150 中等强度等效分钟</strong>
+            ，可分次完成。
+          </p>
+          {week && (
+            <>
+              <small>
+                所选周：{week.start} ～ {week.end}
+              </small>
+              <div className="strict-plan-progress">
+                <p>力量训练记录</p>
+                <strong>{week.strengthDays} / 3 天</strong>
+                <progress
+                  aria-label="本周力量训练记录"
+                  max={3}
+                  value={Math.min(week.strengthDays, 3)}
+                />
+              </div>
+              <div className="strict-plan-progress">
+                <p>有氧等效分钟</p>
+                <strong>{fmt(week.aerobicEquivalentMinutes)} / 150 分钟</strong>
+                <progress
+                  aria-label="本周有氧等效分钟"
+                  max={150}
+                  value={Math.min(week.aerobicEquivalentMinutes, 150)}
+                />
+              </div>
+            </>
+          )}
+          <small>
+            同一天累计力量训练至少 20 分钟计 1
+            天。有氧、球类、户外和日常活动中，MET 3～不足 6 按 1 倍计分钟，MET ≥
+            6 按 2 倍计；低强度活动不计入。
+          </small>
+          {onExercise && (
+            <button type="button" className="button ghost" onClick={onExercise}>
+              记录训练 <ArrowRight size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="card-footnote">
+        以规律记录和逐步训练执行计划，热量与营养均为参考估算；基础代谢下限不代表个体适宜摄入量。
+      </p>
+    </section>
+  );
+}
 function EmptySearch() {
   return (
     <div className="empty-state search-empty">
@@ -1292,6 +1432,11 @@ function ProfileForm({
     goal,
   };
   const valid = !validateProfile(candidate);
+  const planSaved =
+    profile !== null &&
+    Object.entries(candidate).every(
+      ([key, value]) => profile[key as keyof Profile] === value,
+    );
   const budget = valid ? calculateBudget(candidate) : null;
   const bmi = valid ? candidate.weight / (candidate.height / 100) ** 2 : null;
   const submit = (e: FormEvent) => {
@@ -1405,6 +1550,11 @@ function ProfileForm({
                     { value: "lose", label: "温和减脂", icon: ArrowDownLeft },
                     { value: "maintain", label: "保持状态", icon: Heart },
                     { value: "gain", label: "逐步增重", icon: ArrowUpRight },
+                    {
+                      value: "strictLoss",
+                      label: "严格减脂塑形",
+                      icon: Dumbbell,
+                    },
                   ] as const
                 ).map((g) => (
                   <button
@@ -1419,6 +1569,11 @@ function ProfileForm({
                   </button>
                 ))}
               </div>
+              {goal === "strictLoss" && !valid && (
+                <p className="card-footnote">
+                  填好身体数据后，可预览严格模式的热量、营养和训练计划。
+                </p>
+              )}
             </div>
           </div>
           {error && (
@@ -1483,10 +1638,18 @@ function ProfileForm({
             </strong>
           </div>
           <p className="card-footnote">
-            日常消耗 = 基础代谢 × 活动系数。减脂在日常消耗上减 300 kcal，增重加
-            250 kcal；预算不低于估算基础代谢。记录运动后会增加当日可摄入预算。
+            日常消耗 = 基础代谢 × 活动系数。温和减脂减 300 kcal，逐步增重加 250
+            kcal；严格减脂塑形缺口至多 20%、最多 500 kcal，BMI 低于 18.5
+            时采用维持热量。预算不低于估算基础代谢，运动净消耗加入当日可摄入预算。
           </p>
         </section>
+        {goal === "strictLoss" && budget && (
+          <StrictPlan
+            profile={candidate}
+            budget={budget}
+            preview={!planSaved}
+          />
+        )}
         <div className="inline-note profile-note">
           <CircleHelp size={17} />
           <p>

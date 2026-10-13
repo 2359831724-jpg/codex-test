@@ -67,7 +67,7 @@ export interface Profile {
   sex: "female" | "male";
   bodyFat: number | null;
   activityLevel: number;
-  goal: "lose" | "maintain" | "gain";
+  goal: "lose" | "maintain" | "gain" | "strictLoss";
 }
 export interface AppState {
   version: 1;

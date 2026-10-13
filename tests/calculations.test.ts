@@ -4,6 +4,7 @@ import {
   STORAGE_KEY,
   calculateBmr,
   calculateBudget,
+  calculateNutritionTargets,
   emptyState,
   exerciseCalories,
   loadState,
@@ -90,6 +91,212 @@ test("budget applies daily activity and goal with a BMR lower bound", () => {
   assert.equal(budget.target, budget.bmr);
 });
 
+test("strict loss requests at most 20% or 500 kcal and reports the effective BMR floor", () => {
+  const moderate = calculateBudget({
+    ...profile,
+    goal: "strictLoss",
+    activityLevel: 1.375,
+  });
+  closeTo(moderate.requestedDeficit, moderate.maintenance * 0.2);
+  closeTo(moderate.actualDeficit, moderate.requestedDeficit);
+  closeTo(moderate.target, moderate.maintenance * 0.8);
+  assert.equal(moderate.floorApplied, false);
+  assert.equal(moderate.effectiveStatus, "strictLoss");
+
+  const active = calculateBudget({
+    ...profile,
+    goal: "strictLoss",
+    activityLevel: 1.55,
+  });
+  assert.equal(active.requestedDeficit, 500);
+  closeTo(active.actualDeficit, 500);
+  closeTo(active.target, active.maintenance - 500);
+  assert.equal(active.floorApplied, false);
+
+  const floor = calculateBudget({ ...profile, goal: "strictLoss" });
+  assert.equal(floor.target, floor.bmr);
+  closeTo(floor.requestedDeficit, floor.maintenance * 0.2);
+  closeTo(floor.actualDeficit, floor.maintenance - floor.bmr);
+  assert.ok(floor.actualDeficit < floor.requestedDeficit);
+  assert.equal(floor.floorApplied, true);
+  assert.equal(floor.effectiveStatus, "bmrFloor");
+});
+
+test("strict loss maintains calories below BMI 18.5 and resumes at the threshold", () => {
+  const underweight = calculateBudget({
+    ...profile,
+    height: 180,
+    weight: 55,
+    activityLevel: 1.55,
+    goal: "strictLoss",
+  });
+  assert.ok(underweight.bmi < 18.5);
+  assert.ok(underweight.requestedDeficit > 0);
+  assert.equal(underweight.actualDeficit, 0);
+  assert.equal(underweight.target, underweight.maintenance);
+  assert.equal(underweight.floorApplied, false);
+  assert.equal(underweight.effectiveStatus, "lowBmi");
+  const threshold = calculateBudget({
+    ...profile,
+    height: 200,
+    weight: 74,
+    activityLevel: 1.55,
+    goal: "strictLoss",
+  });
+  assert.equal(threshold.bmi, 18.5);
+  assert.ok(threshold.actualDeficit > 0);
+  assert.equal(threshold.effectiveStatus, "strictLoss");
+  // The three established goals retain their original calculation behavior.
+  const oldLoss = calculateBudget({
+    ...profile,
+    height: 180,
+    weight: 55,
+    activityLevel: 1.55,
+    goal: "lose",
+  });
+  closeTo(oldLoss.target, oldLoss.maintenance - 300);
+});
+
+test("strict nutrition uses body weight protein with an energy cap and balanced fat/carbs", () => {
+  const strictProfile: Profile = {
+    ...profile,
+    goal: "strictLoss",
+    activityLevel: 1.375,
+  };
+  const target = calculateBudget(strictProfile).target;
+  const nutrition = calculateNutritionTargets(strictProfile);
+  assert.equal(nutrition.proteinReference, 140);
+  assert.equal(nutrition.protein, 140);
+  assert.equal(nutrition.proteinLimited, false);
+  closeTo(nutrition.fat * 9, target * 0.25);
+  closeTo(
+    nutrition.protein * 4 + nutrition.carbs * 4 + nutrition.fat * 9,
+    target,
+  );
+
+  const cappedProfile: Profile = {
+    ...strictProfile,
+    sex: "female",
+    height: 150,
+    age: 60,
+    activityLevel: 1.2,
+  };
+  const cappedTarget = calculateBudget(cappedProfile).target;
+  const capped = calculateNutritionTargets(cappedProfile);
+  assert.equal(capped.proteinReference, 140);
+  assert.equal(capped.proteinLimited, true);
+  closeTo(capped.protein * 4, cappedTarget * 0.35);
+  closeTo(capped.carbs * 4, cappedTarget * 0.4);
+  closeTo(capped.fat * 9, cappedTarget * 0.25);
+
+  const withoutFat = calculateNutritionTargets(strictProfile, 2000);
+  const withFat = calculateNutritionTargets(
+    { ...strictProfile, bodyFat: 20 },
+    2000,
+  );
+  assert.deepEqual(withFat, withoutFat);
+  for (const goal of ["lose", "maintain", "gain"] as const) {
+    const oldProfile = { ...profile, goal };
+    const oldTarget = calculateBudget(oldProfile).target;
+    const oldNutrition = calculateNutritionTargets(oldProfile);
+    assert.equal(oldNutrition.protein, profile.weight * 1.2);
+    assert.equal(oldNutrition.proteinLimited, false);
+    closeTo(oldNutrition.fat, (oldTarget * 0.25) / 9);
+    closeTo(
+      oldNutrition.carbs,
+      (oldTarget * 0.75 - profile.weight * 1.2 * 4) / 4,
+    );
+  }
+});
+
+test("nutrition stays finite, nonnegative and calorie-balanced across accepted boundary profiles", () => {
+  for (const height of [100, 250])
+    for (const weight of [25, 350])
+      for (const age of [18, 100]) {
+        for (const sex of ["male", "female"] as const)
+          for (const bodyFat of [null, 3, 65]) {
+            for (const activityLevel of [1.2, 1.375, 1.55, 1.725])
+              for (const goal of [
+                "lose",
+                "maintain",
+                "gain",
+                "strictLoss",
+              ] as const) {
+                const boundary: Profile = {
+                  height,
+                  weight,
+                  age,
+                  sex,
+                  bodyFat,
+                  activityLevel,
+                  goal,
+                };
+                const budget = calculateBudget(boundary);
+                const nutrition = calculateNutritionTargets(boundary);
+                for (const value of [
+                  nutrition.protein,
+                  nutrition.carbs,
+                  nutrition.fat,
+                  nutrition.proteinReference,
+                ]) {
+                  assert.ok(Number.isFinite(value) && value >= 0);
+                }
+                closeTo(
+                  nutrition.protein * 4 +
+                    nutrition.carbs * 4 +
+                    nutrition.fat * 9,
+                  budget.target,
+                );
+                if (goal === "strictLoss")
+                  assert.ok(
+                    nutrition.protein * 4 <= budget.target * 0.35 + 1e-8,
+                  );
+                else assert.equal(nutrition.protein, weight * 1.2);
+              }
+          }
+      }
+  for (const target of [1, 2000, 100_000]) {
+    const nutrition = calculateNutritionTargets(
+      { ...profile, goal: "strictLoss" },
+      target,
+    );
+    closeTo(
+      nutrition.protein * 4 + nutrition.carbs * 4 + nutrition.fat * 9,
+      target,
+    );
+  }
+  for (const target of [NaN, Infinity, -1, 0, 100_001])
+    assert.throws(() => calculateNutritionTargets(profile, target));
+});
+
+test("new strict goals and established goals round-trip without changing stored records", () => {
+  const foodLog = makeFoodLog(rice, 150, "午餐", "2026-10-12");
+  const exerciseLog = makeExerciseLog(running, 30, 70, "2026-10-12");
+  for (const goal of ["lose", "maintain", "gain", "strictLoss"] as const) {
+    const selectedProfile = { ...profile, goal };
+    assert.equal(validateProfile(selectedProfile), null);
+    const state = {
+      ...emptyState(),
+      profile: selectedProfile,
+      foodLogs: [foodLog],
+      exerciseLogs: [exerciseLog],
+    };
+    const restored = parseState(JSON.parse(JSON.stringify(state)));
+    assert.deepEqual(restored, state);
+    assert.equal(restored.foodLogs[0].id, foodLog.id);
+    assert.equal(restored.foodLogs[0].foodId, "rice");
+    assert.equal(restored.exerciseLogs[0].id, exerciseLog.id);
+    assert.equal(restored.version, 1);
+  }
+  assert.equal(STORAGE_KEY, "calorie-studio:v1");
+  assert.throws(() =>
+    parseState({
+      ...emptyState(),
+      profile: { ...profile, goal: "strict_loss" },
+    }),
+  );
+});
+
 test("all accepted boundary profiles produce finite positive BMR and calorie budgets", () => {
   const lowestMifflin = {
     ...profile,
@@ -104,7 +311,12 @@ test("all accepted boundary profiles produce finite positive BMR and calorie bud
       for (const age of [18, 100]) {
         for (const sex of ["male", "female"] as const)
           for (const bodyFat of [null, 3, 65]) {
-            for (const goal of ["lose", "maintain", "gain"] as const) {
+            for (const goal of [
+              "lose",
+              "maintain",
+              "gain",
+              "strictLoss",
+            ] as const) {
               const boundaryProfile: Profile = {
                 ...profile,
                 height,
