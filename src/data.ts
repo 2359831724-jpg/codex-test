@@ -3,6 +3,8 @@ import { foodGroup } from "./food-utils";
 import { plantFoods } from "./foods-plants";
 import { proteinFoods } from "./foods-protein";
 import { dishFoods } from "./foods-dishes";
+import { extraFruitFoods } from "./foods-fruit-more";
+import { everydayFoods } from "./foods-everyday-more";
 
 // 食物为常见可食用状态下每 100 g 的参考估算（饮品按近似 100 ml）；
 // 品牌、配方和烹调会影响数值。运动 MET 参考 2011/2024 活动代谢当量汇编
@@ -1010,7 +1012,7 @@ export const foods: Food[] = [
     ],
     [
       "grape",
-      "葡萄（可食部分）",
+      "葡萄 / 提子（可食部分）",
       "🍇",
       69,
       0.7,
@@ -1018,7 +1020,7 @@ export const foods: Food[] = [
       0.2,
       "1 小碗",
       150,
-      "putao grape",
+      "putao pu tao grape grapes 提子 tizi ti zi",
     ],
     [
       "strawberry",
@@ -1728,6 +1730,8 @@ export const foods: Food[] = [
   ...plantFoods,
   ...proteinFoods,
   ...dishFoods,
+  ...extraFruitFoods,
+  ...everydayFoods,
 ].map((food) =>
   food.id === "olive-oil" ? { ...food, category: "调味与油脂" as const } : food,
 );

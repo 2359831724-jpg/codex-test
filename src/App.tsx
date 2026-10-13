@@ -40,6 +40,7 @@ import {
 } from "./lib";
 import type { AppState, Activity, Food, Meal, Profile } from "./types";
 import CustomFoodForm from "./CustomFoodForm";
+import { searchFoods } from "./food-search";
 
 type View = "overview" | "diary" | "exercise" | "library" | "profile";
 type Modal =
@@ -182,12 +183,9 @@ export default function App() {
       if (importRef.current) importRef.current.value = "";
     }
   };
-  const foodMatches = availableFoods.filter(
-    (f) =>
-      (foodCategory === "全部" || f.category === foodCategory) &&
-      `${f.name} ${f.category} ${f.keywords ?? ""}`
-        .toLowerCase()
-        .includes(foodQuery.trim().toLowerCase()),
+  const allFoodMatches = searchFoods(availableFoods, foodQuery);
+  const foodMatches = allFoodMatches.filter(
+    (f) => foodCategory === "全部" || f.category === foodCategory,
   );
   const activityMatches = activities.filter(
     (a) =>
@@ -907,10 +905,13 @@ export default function App() {
               <label className="search-box">
                 <Search size={18} />
                 <input
-                  placeholder="搜索你喜欢的食物，比如米饭、鸡蛋…"
+                  placeholder="搜索食物或别名，比如提子、地瓜…"
                   aria-label="搜索食物"
                   value={foodQuery}
-                  onChange={(e) => setFoodQuery(e.target.value)}
+                  onChange={(e) => {
+                    setFoodQuery(e.target.value);
+                    setFoodCategory("全部");
+                  }}
                 />
                 {foodQuery && (
                   <button
@@ -1000,6 +1001,14 @@ export default function App() {
             {!foodMatches.length && (
               <div className="custom-food-empty">
                 <EmptySearch />
+                {foodCategory !== "全部" && allFoodMatches.length > 0 && (
+                  <button
+                    className="button secondary"
+                    onClick={() => setFoodCategory("全部")}
+                  >
+                    在全部分类查看 {allFoodMatches.length} 项结果
+                  </button>
+                )}
                 <button
                   className="button secondary"
                   onClick={() => setCustomEntry("library")}
@@ -1009,7 +1018,8 @@ export default function App() {
               </div>
             )}
             <p className="table-note">
-              食物数据为常见食材的参考估算，烹调方法和品牌会影响实际热量。标注「熟」的食物按熟重记录；饮品按重量估算。包装食品请以营养标签为准。
+              当前列出全部 {foodMatches.length}{" "}
+              项匹配食物。食物数据为参考估算，部分细分水果沿用同类食物通用数据，品种、烹调和品牌会影响实际热量。标注「熟」的食物按熟重记录；包装食品以营养标签为准。
             </p>
           </>
         )}
@@ -1490,7 +1500,10 @@ function RecordModal({
       ).filter((el) => el.getClientRects().length > 0);
       const first = focusables[0],
         last = focusables.at(-1);
-      if (e.shiftKey && document.activeElement === first) {
+      if (!dialog.contains(document.activeElement)) {
+        e.preventDefault();
+        (e.shiftKey ? last : first)?.focus();
+      } else if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last?.focus();
       } else if (!e.shiftKey && document.activeElement === last) {
@@ -1508,11 +1521,7 @@ function RecordModal({
     };
   }, []);
   const matches = isFood
-    ? foodCatalog.filter((f) =>
-        `${f.name} ${f.category} ${f.keywords ?? ""}`
-          .toLowerCase()
-          .includes(query.toLowerCase().trim()),
-      )
+    ? searchFoods(foodCatalog, query)
     : activities.filter((a) =>
         `${a.name} ${a.category} ${a.description}`.includes(query.trim()),
       );
@@ -1612,13 +1621,32 @@ function RecordModal({
                     aria-label={
                       isFood ? "搜索要记录的食物" : "搜索要记录的运动"
                     }
-                    placeholder={isFood ? "搜索食物名称…" : "搜索运动名称…"}
+                    placeholder={
+                      isFood ? "搜索食物或别名，例如提子…" : "搜索运动名称…"
+                    }
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
+                  {query && (
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="清空记录搜索"
+                      onClick={(e) => {
+                        setQuery("");
+                        e.currentTarget
+                          .closest("label")
+                          ?.querySelector("input")
+                          ?.focus();
+                      }}
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
                 </label>
                 <div className="modal-search-meta">
-                  {isFood ? "食物库" : "运动库"} · {matches.length} 项结果
+                  {isFood ? "食物库" : "运动库"} · {matches.length} 项结果 ·
+                  已显示全部，可向下滚动
                 </div>
                 {isFood && (
                   <button
@@ -1630,7 +1658,7 @@ function RecordModal({
                   </button>
                 )}
                 <div className="modal-results">
-                  {matches.slice(0, 40).map((item) => (
+                  {matches.map((item) => (
                     <button
                       type="button"
                       className="modal-result"
@@ -1652,11 +1680,6 @@ function RecordModal({
                   ))}
                   {matches.length === 0 && <EmptySearch />}
                 </div>
-                {matches.length > 40 && (
-                  <p className="card-footnote">
-                    显示前 40 项，输入关键词查找更多。
-                  </p>
-                )}
               </>
             ) : (
               <>
