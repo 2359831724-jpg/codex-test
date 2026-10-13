@@ -3728,3 +3728,81 @@ select {
     gap: 6px 12px;
   }
 }
+
+.goal-options {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.extreme-plan {
+  border-color: #ece2ce;
+}
+.extreme-plan .strict-plan-heading,
+.extreme-plan .strict-plan-item h4,
+.extreme-plan .strict-plan-item strong,
+.extreme-plan .strict-plan-progress strong {
+  color: #7c653c;
+}
+.extreme-plan .strict-plan-heading > svg,
+.extreme-plan .strict-plan-item h4 svg {
+  color: #9c8456;
+}
+.extreme-plan .strict-plan-item {
+  border-color: #eee5d3;
+  background: #fcfaf3;
+}
+.extreme-plan .strict-plan-item p,
+.extreme-plan .strict-plan-item small,
+.extreme-plan .strict-plan-progress {
+  color: #776f5d;
+}
+.extreme-plan .strict-plan-progress {
+  border-top-color: #e8dec9;
+}
+.extreme-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid #e9dec4;
+  border-radius: 6px;
+  background: #f7f0de;
+  color: #80693f;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+.extreme-mode-badge svg {
+  width: 13px;
+  height: 13px;
+}
+.extreme-plan .strict-plan-progress > .macro-track,
+.extreme-plan .strict-plan-progress > progress {
+  background: #efe7d5;
+}
+.extreme-plan .strict-plan-progress > progress::-webkit-progress-bar {
+  background: #efe7d5;
+}
+.extreme-plan .strict-plan-progress .macro-fill {
+  background: #bba06d;
+}
+.extreme-plan .strict-plan-progress > progress::-webkit-progress-value {
+  background: #bba06d;
+}
+.extreme-plan .strict-plan-progress > progress::-moz-progress-bar {
+  background: #bba06d;
+}
+@media (max-width: 760px) {
+  .goal-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .goal-options > .goal-option:nth-child(5):last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 590px) {
+  .strict-plan-heading .extreme-mode-badge {
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+}

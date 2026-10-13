@@ -126,7 +126,8 @@ export default function App() {
   );
   const budget = state.profile ? calculateBudget(state.profile) : null;
   const target = budget?.target ?? 2000;
-  const isStrict = state.profile?.goal === "strictLoss";
+  const isExtreme = state.profile?.goal === "extremeLoss";
+  const isStrict = state.profile?.goal === "strictLoss" || isExtreme;
   const nutrition = state.profile
     ? calculateNutritionTargets(state.profile, target)
     : {
@@ -500,11 +501,13 @@ export default function App() {
                     <Flame size={18} /> 今日能量
                   </h2>
                   <span className="subtle-pill">
-                    {isStrict
-                      ? "严格减脂塑形"
-                      : budget
-                        ? "个性化预算"
-                        : "参考预算"}
+                    {isExtreme
+                      ? "极限减脂"
+                      : isStrict
+                        ? "严格减脂塑形"
+                        : budget
+                          ? "个性化预算"
+                          : "参考预算"}
                   </span>
                 </div>
                 <div className="energy-body">
@@ -663,7 +666,7 @@ export default function App() {
                 <div className="inline-note">
                   <CircleHelp size={14} />
                   {isStrict
-                    ? `严格模式蛋白质按体重 × 2 g 参考${nutrition.proteinLimited ? "，已按热量占比上限调整" : ""}；脂肪占预算 25%，碳水补足余量。`
+                    ? `${isExtreme ? "极限" : "严格"}模式蛋白质按每公斤体重 ${isExtreme ? "2.2" : "2"} g 参考${nutrition.proteinLimited ? "，已按热量占比上限调整" : ""}；脂肪占预算 25%，碳水补足余量。`
                     : "营养目标为一般参考，可随日常饮食灵活调整。"}
                 </div>
               </section>
@@ -1229,12 +1232,19 @@ function StrictPlan({
   onExercise?: () => void;
 }) {
   const nutrition = calculateNutritionTargets(profile, budget.target);
+  const extreme = profile.goal === "extremeLoss";
+  const modeName = extreme ? "极限减脂" : "严格减脂塑形";
   return (
-    <section className="card strict-plan" aria-label="严格减脂塑形计划">
+    <section
+      className={`card strict-plan${extreme ? " extreme-plan" : ""}`}
+      aria-label={`${modeName}计划`}
+    >
       <div className="strict-plan-heading">
         <Dumbbell size={18} />
-        <h2>严格减脂塑形计划</h2>
-        <span className="strict-mode-badge">
+        <h2>{modeName}计划</h2>
+        <span
+          className={`strict-mode-badge${extreme ? " extreme-mode-badge" : ""}`}
+        >
           {preview ? "保存后启用" : "已启用"}
         </span>
       </div>
@@ -1248,12 +1258,29 @@ function StrictPlan({
             <strong>{fmt(budget.actualDeficit)} kcal</strong>。
           </p>
           <p>
-            计划缺口至多为日常消耗的 20%，最多 500
+            计划缺口至多为日常消耗的 {extreme ? "25%" : "20%"}，最多{" "}
+            {extreme ? "600" : "500"}
             kcal；预算不低于估算基础代谢。
           </p>
+          {extreme && (
+            <p>
+              本模式额外设置通用摄入下限：男性 1,500、女性 1,200 kcal /
+              天。当前计算下限为 <strong>{fmt(budget.budgetFloor)} kcal</strong>
+              ，达到下限时会缩小或停止热量缺口。
+            </p>
+          )}
           {budget.effectiveStatus === "lowBmi" ? (
             <small>
-              当前 BMI 低于 18.5，本模式采用维持热量，继续记录营养和训练。
+              当前 BMI 低于 18.5，
+              {extreme
+                ? "本模式不生成减脂缺口，预算同时保留摄入下限"
+                : "本模式采用维持热量"}
+              ，继续记录营养和训练。
+            </small>
+          ) : budget.effectiveStatus === "intakeFloor" ? (
+            <small>
+              已应用通用摄入下限，实际缺口小于计划值。
+              {budget.actualDeficit === 0 ? "当前预算不生成减脂缺口。" : ""}
             </small>
           ) : budget.floorApplied ? (
             <small>已到估算基础代谢下限，当前实际缺口小于计划值。</small>
@@ -1264,8 +1291,8 @@ function StrictPlan({
             <strong>{fmt(nutrition.fat)} g</strong>。
           </p>
           <small>
-            蛋白质按体重 × 2 g 计算，上限为基础预算的 35%；脂肪占
-            25%，碳水补足余量。
+            蛋白质按每公斤体重 {extreme ? "2.2" : "2"} g 计算，上限为基础预算的
+            35%；脂肪占 25%，碳水补足余量。
             {nutrition.proteinLimited ? "当前蛋白质目标已按占比上限调整。" : ""}
           </small>
           <small>
@@ -1322,7 +1349,9 @@ function StrictPlan({
         </div>
       </div>
       <p className="card-footnote">
-        以规律记录和逐步训练执行计划，热量与营养均为参考估算；基础代谢下限不代表个体适宜摄入量。
+        以规律记录和逐步训练执行计划，热量与营养均为参考估算；
+        {extreme ? "通用摄入下限与基础代谢估算" : "基础代谢下限"}
+        不代表个体适宜摄入量。
       </p>
     </section>
   );
@@ -1555,6 +1584,7 @@ function ProfileForm({
                       label: "严格减脂塑形",
                       icon: Dumbbell,
                     },
+                    { value: "extremeLoss", label: "极限减脂", icon: Flame },
                   ] as const
                 ).map((g) => (
                   <button
@@ -1569,9 +1599,9 @@ function ProfileForm({
                   </button>
                 ))}
               </div>
-              {goal === "strictLoss" && !valid && (
+              {(goal === "strictLoss" || goal === "extremeLoss") && !valid && (
                 <p className="card-footnote">
-                  填好身体数据后，可预览严格模式的热量、营养和训练计划。
+                  填好身体数据后，可预览所选模式的热量、营养和训练计划。
                 </p>
               )}
             </div>
@@ -1639,11 +1669,13 @@ function ProfileForm({
           </div>
           <p className="card-footnote">
             日常消耗 = 基础代谢 × 活动系数。温和减脂减 300 kcal，逐步增重加 250
-            kcal；严格减脂塑形缺口至多 20%、最多 500 kcal，BMI 低于 18.5
-            时采用维持热量。预算不低于估算基础代谢，运动净消耗加入当日可摄入预算。
+            kcal；严格模式缺口至多 20% / 500 kcal，极限模式至多 25% / 600
+            kcal，并设置男性 1,500 / 女性 1,200 kcal
+            的摄入下限。严格与极限模式在 BMI 低于 18.5
+            时不生成减脂缺口。预算不低于估算基础代谢，运动净消耗加入当日可摄入预算。
           </p>
         </section>
-        {goal === "strictLoss" && budget && (
+        {(goal === "strictLoss" || goal === "extremeLoss") && budget && (
           <StrictPlan
             profile={candidate}
             budget={budget}

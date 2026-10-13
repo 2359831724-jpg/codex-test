@@ -26,6 +26,57 @@ function food(
 }
 const ids = (foods: Food[]) => foods.map((item) => item.id);
 
+test("new regional dishes and ingredients can be found by dish names and local aliases", () => {
+  const cases = [
+    ["锅包肉", "ext-regional-guobaorou"],
+    ["沙茶面", "ext-regional-shacha-noodles"],
+    ["蚂蚁上树", "ext-regional-ants-on-tree"],
+    ["乌鳢", "ext-protein-more-snakehead"],
+    ["瑶柱", "ext-protein-more-dried-scallop"],
+    ["马鲛鱼", "ext-protein-more-spanish-mackerel"],
+    ["折耳根", "ext-market-houttuynia"],
+    ["马蹄", "ext-market-water-chestnut"],
+    ["沙葛", "ext-market-jicama"],
+    ["菊薯", "ext-market-yacon"],
+    ["牛皮菜", "ext-market-chard"],
+  ];
+  for (const [query, id] of cases) {
+    assert.ok(
+      ids(searchFoods(foods, query)).includes(id),
+      `${query} should find ${id}`,
+    );
+  }
+});
+
+test("new food names do not acquire aliases for unrelated ingredients", () => {
+  for (const query of ["红薯", "甘薯", "地瓜"]) {
+    assert.ok(
+      !ids(searchFoods(foods, query)).includes("ext-market-jicama"),
+      query,
+    );
+  }
+  assert.ok(!ids(searchFoods(foods, "海鲜酱")).includes("ext-market-xo-sauce"));
+  assert.ok(ids(searchFoods(foods, "XO 酱")).includes("ext-market-xo-sauce"));
+  for (const query of ["木耳", "黑木耳"]) {
+    assert.ok(
+      !ids(searchFoods(foods, query)).includes("ext-market-malabar-spinach"),
+      query,
+    );
+  }
+  for (const query of ["葡萄", "提子", "grape"]) {
+    assert.ok(
+      !ids(searchFoods(foods, query)).includes("ext-market-jaboticaba"),
+      query,
+    );
+  }
+  assert.ok(
+    ids(searchFoods(foods, "木耳菜")).includes("ext-market-malabar-spinach"),
+  );
+  assert.ok(
+    ids(searchFoods(foods, "树葡萄")).includes("ext-market-jaboticaba"),
+  );
+});
+
 test("the live catalog finds Yakult under simplified, traditional, English and pinyin names", () => {
   for (const query of [
     "养乐多",

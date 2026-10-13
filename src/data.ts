@@ -6,6 +6,9 @@ import { dishFoods } from "./foods-dishes";
 import { extraFruitFoods } from "./foods-fruit-more";
 import { everydayFoods } from "./foods-everyday-more";
 import { createBrandFoods } from "./foods-branded";
+import { regionalFoods } from "./foods-regional-more";
+import { extraProteinFoods } from "./foods-protein-more";
+import { marketFoods } from "./foods-market-more";
 
 // 食物为常见可食用状态下每 100 g 的参考估算，unit=ml 时按每 100 ml；
 // 品牌、配方和烹调会影响数值。运动 MET 参考 2011/2024 活动代谢当量汇编
@@ -1733,6 +1736,9 @@ const baseFoods: Food[] = [
   ...dishFoods,
   ...extraFruitFoods,
   ...everydayFoods,
+  ...regionalFoods,
+  ...extraProteinFoods,
+  ...marketFoods,
 ].map((food) =>
   food.id === "olive-oil" ? { ...food, category: "调味与油脂" as const } : food,
 );

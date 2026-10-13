@@ -91,7 +91,17 @@ const derivedFood =
 const unrelatedNames = [
   {
     terms: ["葡萄", "提子", "grape"],
-    names: ["葡萄柚", "西柚", "grapefruit", "海葡萄", "葡萄糖"],
+    names: [
+      "葡萄柚",
+      "西柚",
+      "grapefruit",
+      "海葡萄",
+      "葡萄糖",
+      "树葡萄",
+      "嘉宝果",
+      "jaboticaba",
+      "treegrape",
+    ],
   },
   {
     terms: ["樱桃", "车厘子", "cherry"],
@@ -102,6 +112,7 @@ const unrelatedNames = [
     names: ["银鳕", "黑鳕", "裸盖鱼"],
   },
   { terms: ["菠萝", "凤梨", "pineapple"], names: ["菠萝蜜"] },
+  { terms: ["木耳", "黑木耳"], names: ["木耳菜"] },
   {
     terms: ["花菜", "菜花", "花椰菜"],
     names: ["绿花椰菜", "青花菜", "西兰花"],
