@@ -39,6 +39,7 @@ import {
   validateProfile,
 } from "./lib";
 import type { AppState, Activity, Food, Meal, Profile } from "./types";
+import CustomFoodForm from "./CustomFoodForm";
 
 type View = "overview" | "diary" | "exercise" | "library" | "profile";
 type Modal =
@@ -90,6 +91,9 @@ export default function App() {
   const [view, setView] = useState<View>("overview");
   const [date, setDate] = useState(localDate());
   const [modal, setModal] = useState<Modal | null>(null);
+  const [customEntry, setCustomEntry] = useState<"library" | "record" | null>(
+    null,
+  );
   const [modalMeal, setModalMeal] = useState<Meal>("早餐");
   const [toast, setToast] = useState("");
   const [foodQuery, setFoodQuery] = useState("");
@@ -98,6 +102,10 @@ export default function App() {
   const [activityCategory, setActivityCategory] = useState("全部");
   const importRef = useRef<HTMLInputElement>(null);
   const today = localDate();
+  const availableFoods = useMemo(
+    () => [...state.customFoods, ...foods],
+    [state.customFoods],
+  );
   const summary = useMemo(
     () => summarize(state.foodLogs, state.exerciseLogs, date),
     [state, date],
@@ -157,7 +165,7 @@ export default function App() {
       const data = parseState(JSON.parse(await file.text()));
       if (
         !window.confirm(
-          `导入 ${data.foodLogs.length} 条饮食记录和 ${data.exerciseLogs.length} 条运动记录？这将替换当前数据，建议先导出备份。`,
+          `导入 ${data.foodLogs.length} 条饮食记录、${data.exerciseLogs.length} 条运动记录和 ${data.customFoods.length} 项自定义食物？这将替换当前数据，建议先导出备份。`,
         )
       )
         return;
@@ -174,7 +182,7 @@ export default function App() {
       if (importRef.current) importRef.current.value = "";
     }
   };
-  const foodMatches = foods.filter(
+  const foodMatches = availableFoods.filter(
     (f) =>
       (foodCategory === "全部" || f.category === foodCategory) &&
       `${f.name} ${f.category} ${f.keywords ?? ""}`
@@ -915,11 +923,17 @@ export default function App() {
                 )}
               </label>
               <span className="library-count">
-                {foods.length} 种常见食物 · 每 100 克可食部分
+                {availableFoods.length} 种食物 · 每 100 克可食部分
               </span>
+              <button
+                className="button secondary custom-food-button"
+                onClick={() => setCustomEntry("library")}
+              >
+                <Plus size={16} /> 添加自定义食物
+              </button>
             </div>
             <div className="category-tabs" aria-label="食物分类">
-              {["全部", ...foodCategories].map((c) => (
+              {["全部", ...foodCategories, "自定义"].map((c) => (
                 <button
                   key={c}
                   className={`tab ${foodCategory === c ? "active" : ""}`}
@@ -935,7 +949,12 @@ export default function App() {
                 <article className="catalog-card" key={f.id}>
                   <span className="catalog-emoji">{f.emoji}</span>
                   <div className="catalog-content">
-                    <h3 className="catalog-name">{f.name}</h3>
+                    <h3 className="catalog-name">
+                      {f.name}
+                      {f.category === "自定义" && (
+                        <span className="custom-food-badge">自定义</span>
+                      )}
+                    </h3>
                     <div className="catalog-meta">
                       <strong>{f.kcal}</strong> kcal <span>/ 100 g</span>
                     </div>
@@ -943,17 +962,52 @@ export default function App() {
                       蛋白质 {f.protein} · 碳水 {f.carbs} · 脂肪 {f.fat} g
                     </small>
                   </div>
-                  <button
-                    className="catalog-add"
-                    aria-label={`记录${f.name}`}
-                    onClick={() => openFood(f)}
-                  >
-                    <Plus size={17} />
-                  </button>
+                  <div className="catalog-actions">
+                    <button
+                      className="catalog-add"
+                      aria-label={`记录${f.name}`}
+                      onClick={() => openFood(f)}
+                    >
+                      <Plus size={17} />
+                    </button>
+                    {f.category === "自定义" && (
+                      <button
+                        className="icon-button delete-button"
+                        aria-label={`删除自定义食物${f.name}`}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "删除这个自定义食物？已有饮食记录会保留。",
+                            )
+                          ) {
+                            setState((s) => ({
+                              ...s,
+                              customFoods: s.customFoods.filter(
+                                (item) => item.id !== f.id,
+                              ),
+                            }));
+                            notify("已删除自定义食物，历史记录已保留");
+                          }
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
-            {!foodMatches.length && <EmptySearch />}
+            {!foodMatches.length && (
+              <div className="custom-food-empty">
+                <EmptySearch />
+                <button
+                  className="button secondary"
+                  onClick={() => setCustomEntry("library")}
+                >
+                  <Plus size={16} /> 没找到？添加自己的食物
+                </button>
+              </div>
+            )}
             <p className="table-note">
               食物数据为常见食材的参考估算，烹调方法和品牌会影响实际热量。标注「熟」的食物按熟重记录；饮品按重量估算。包装食品请以营养标签为准。
             </p>
@@ -1014,6 +1068,11 @@ export default function App() {
       {modal && (
         <RecordModal
           modal={modal}
+          foodCatalog={availableFoods}
+          onAddCustom={() => {
+            setModal(null);
+            setCustomEntry("record");
+          }}
           date={date}
           meal={modalMeal}
           weight={state.profile?.weight}
@@ -1027,6 +1086,28 @@ export default function App() {
             setState((s) => ({ ...s, exerciseLogs: [...s.exerciseLogs, log] }));
             notify(`已记录 ${log.name} · 消耗 ${fmt(log.kcal)} kcal`);
             setModal(null);
+          }}
+        />
+      )}
+      {customEntry && (
+        <CustomFoodForm
+          onClose={() => {
+            if (customEntry === "record") setModal({ kind: "food" });
+            setCustomEntry(null);
+          }}
+          onSave={(food) => {
+            if (state.customFoods.length >= 2000)
+              throw new Error(
+                "自定义食物已达 2,000 项，请先删除不再使用的项目",
+              );
+            setState((s) => ({ ...s, customFoods: [...s.customFoods, food] }));
+            if (customEntry === "record") openFood(food, modalMeal);
+            else {
+              setFoodCategory("自定义");
+              setFoodQuery("");
+            }
+            setCustomEntry(null);
+            notify(`已添加自定义食物：${food.name}`);
           }}
         />
       )}
@@ -1352,6 +1433,8 @@ function ProfileForm({
 
 function RecordModal({
   modal,
+  foodCatalog,
+  onAddCustom,
   date,
   meal,
   weight,
@@ -1360,6 +1443,8 @@ function RecordModal({
   onExercise,
 }: {
   modal: Modal;
+  foodCatalog: Food[];
+  onAddCustom: () => void;
   date: string;
   meal: Meal;
   weight?: number;
@@ -1423,7 +1508,7 @@ function RecordModal({
     };
   }, []);
   const matches = isFood
-    ? foods.filter((f) =>
+    ? foodCatalog.filter((f) =>
         `${f.name} ${f.category} ${f.keywords ?? ""}`
           .toLowerCase()
           .includes(query.toLowerCase().trim()),
@@ -1535,6 +1620,15 @@ function RecordModal({
                 <div className="modal-search-meta">
                   {isFood ? "食物库" : "运动库"} · {matches.length} 项结果
                 </div>
+                {isFood && (
+                  <button
+                    type="button"
+                    className="button ghost custom-food-button"
+                    onClick={onAddCustom}
+                  >
+                    <Plus size={15} /> 库里没有？添加自定义食物
+                  </button>
+                )}
                 <div className="modal-results">
                   {matches.slice(0, 40).map((item) => (
                     <button

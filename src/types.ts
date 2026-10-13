@@ -1,5 +1,13 @@
 export type FoodCategory =
-  "主食谷物" | "肉蛋水产" | "蔬菜菌菇" | "水果" | "奶豆坚果" | "饮品零食";
+  | "主食谷物"
+  | "肉蛋水产"
+  | "蔬菜菌菇"
+  | "水果"
+  | "奶豆坚果"
+  | "饮品零食"
+  | "中式菜肴"
+  | "调味与油脂"
+  | "自定义";
 export interface Food {
   id: string;
   name: string;
@@ -63,4 +71,5 @@ export interface AppState {
   profile: Profile | null;
   foodLogs: FoodLog[];
   exerciseLogs: ExerciseLog[];
+  customFoods: Food[];
 }

@@ -13,9 +13,16 @@ export const STORAGE_KEY = "calorie-studio:v1";
 const MEALS: readonly Meal[] = ["早餐", "午餐", "晚餐", "加餐"];
 const ACTIVITY_LEVELS = [1.2, 1.375, 1.55, 1.725];
 const MAX_LOGS = 100_000;
+const MAX_CUSTOM_FOODS = 2000;
 
 export function emptyState(): AppState {
-  return { version: 1, profile: null, foodLogs: [], exerciseLogs: [] };
+  return {
+    version: 1,
+    profile: null,
+    foodLogs: [],
+    exerciseLogs: [],
+    customFoods: [],
+  };
 }
 
 function isObject(input: unknown): input is Record<string, unknown> {
@@ -147,6 +154,39 @@ function parseExerciseLog(input: unknown): ExerciseLog {
   };
 }
 
+function parseCustomFood(input: unknown): Food {
+  if (!isObject(input)) throw new Error("自定义食物格式无效。");
+  const id = string(input.id, "自定义食物 ID", 100);
+  if (!id.startsWith("custom-") || !id.slice(7).trim()) {
+    throw new Error("自定义食物 ID 格式无效。");
+  }
+  if (input.category !== "自定义") throw new Error("自定义食物分类无效。");
+  const food: Food = {
+    id,
+    name: string(input.name, "自定义食物名称", 100),
+    category: "自定义",
+    emoji: string(input.emoji, "自定义食物图标", 32),
+    kcal: number(input.kcal, "每百克热量", 0, 1000),
+    protein: number(input.protein, "每百克蛋白质", 0, 100),
+    carbs: number(input.carbs, "每百克碳水化合物", 0, 100),
+    fat: number(input.fat, "每百克脂肪", 0, 100),
+    portion: string(input.portion, "自定义食物份量名称", 100),
+    portionGrams: number(input.portionGrams, "一份食物重量", 0.1, 2000),
+  };
+  if (food.protein + food.carbs + food.fat > 101) {
+    throw new Error(
+      "每百克食物的蛋白质、碳水和脂肪总量不能超过 100 克（允许 1 克的标签舍入误差）。",
+    );
+  }
+  if (input.keywords !== undefined) {
+    if (typeof input.keywords !== "string" || input.keywords.length > 500) {
+      throw new Error("自定义食物搜索关键词格式无效。");
+    }
+    food.keywords = input.keywords;
+  }
+  return food;
+}
+
 /** Build a fresh, validated state. This never mutates the input or touches storage. */
 export function parseState(input: unknown): AppState {
   if (!isObject(input) || input.version !== 1)
@@ -159,16 +199,28 @@ export function parseState(input: unknown): AppState {
   ) {
     throw new Error("记录列表格式无效或记录数量过多。");
   }
+  // Version 1 backups made before custom foods existed keep all their records.
+  const customFoods = input.customFoods === undefined ? [] : input.customFoods;
+  if (!Array.isArray(customFoods) || customFoods.length > MAX_CUSTOM_FOODS) {
+    throw new Error("自定义食物列表格式无效，或超过 2,000 项上限。");
+  }
   const state: AppState = {
     version: 1,
     profile: parseProfile(input.profile),
     foodLogs: input.foodLogs.map(parseFoodLog),
     exerciseLogs: input.exerciseLogs.map(parseExerciseLog),
+    customFoods: customFoods.map(parseCustomFood),
   };
   const ids = new Set<string>();
   for (const log of [...state.foodLogs, ...state.exerciseLogs]) {
     if (ids.has(log.id)) throw new Error("数据中存在重复的记录 ID。");
     ids.add(log.id);
+  }
+  const foodIds = new Set<string>();
+  for (const food of state.customFoods) {
+    if (foodIds.has(food.id))
+      throw new Error("数据中存在重复的自定义食物 ID。");
+    foodIds.add(food.id);
   }
   return state;
 }
@@ -259,6 +311,29 @@ function uuid(): string {
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export function makeCustomFood(input: {
+  name: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  portionGrams: number;
+}): Food {
+  if (!isObject(input)) throw new Error("自定义食物格式无效。");
+  return parseCustomFood({
+    id: `custom-${uuid()}`,
+    name: typeof input.name === "string" ? input.name.trim() : input.name,
+    category: "自定义",
+    emoji: "🍽️",
+    kcal: input.kcal,
+    protein: input.protein,
+    carbs: input.carbs,
+    fat: input.fat,
+    portion: "1 份",
+    portionGrams: input.portionGrams,
+  });
 }
 
 export function makeFoodLog(

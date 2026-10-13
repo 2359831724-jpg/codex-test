@@ -1,4 +1,8 @@
 import type { Activity, ActivityCategory, Food, FoodCategory } from "./types";
+import { foodGroup } from "./food-utils";
+import { plantFoods } from "./foods-plants";
+import { proteinFoods } from "./foods-protein";
+import { dishFoods } from "./foods-dishes";
 
 // 食物为常见可食用状态下每 100 g 的参考估算（饮品按近似 100 ml）；
 // 品牌、配方和烹调会影响数值。运动 MET 参考 2011/2024 活动代谢当量汇编
@@ -10,6 +14,8 @@ export const foodCategories: FoodCategory[] = [
   "水果",
   "奶豆坚果",
   "饮品零食",
+  "中式菜肴",
+  "调味与油脂",
 ];
 export const activityCategories: ActivityCategory[] = [
   "有氧运动",
@@ -19,46 +25,6 @@ export const activityCategories: ActivityCategory[] = [
   "日常活动",
   "身心训练",
 ];
-
-type FoodRow = [
-  id: string,
-  name: string,
-  emoji: string,
-  kcal: number,
-  protein: number,
-  carbs: number,
-  fat: number,
-  portion: string,
-  portionGrams: number,
-  keywords?: string,
-];
-const foodGroup = (category: FoodCategory, rows: FoodRow[]): Food[] =>
-  rows.map(
-    ([
-      id,
-      name,
-      emoji,
-      kcal,
-      protein,
-      carbs,
-      fat,
-      portion,
-      portionGrams,
-      keywords,
-    ]) => ({
-      id,
-      name,
-      category,
-      emoji,
-      kcal,
-      protein,
-      carbs,
-      fat,
-      portion,
-      portionGrams,
-      keywords,
-    }),
-  );
 
 export const foods: Food[] = [
   ...foodGroup("主食谷物", [
@@ -1759,7 +1725,12 @@ export const foods: Food[] = [
       "ganlanyou olive oil",
     ],
   ]),
-];
+  ...plantFoods,
+  ...proteinFoods,
+  ...dishFoods,
+].map((food) =>
+  food.id === "olive-oil" ? { ...food, category: "调味与油脂" as const } : food,
+);
 
 type ActivityRow = [
   id: string,

@@ -8,6 +8,7 @@ import {
   exerciseCalories,
   loadState,
   localDate,
+  makeCustomFood,
   makeExerciseLog,
   makeFoodLog,
   parseState,
@@ -193,6 +194,7 @@ test("import validates schema, numbers, dates and record identity without mutati
     profile,
     foodLogs: [makeFoodLog(rice, 100, "午餐", "2026-10-12")],
     exerciseLogs: [makeExerciseLog(running, 30, 70, "2026-10-12")],
+    customFoods: [],
   };
   const parsed = parseState(state);
   assert.deepEqual(parsed, state);
@@ -250,6 +252,167 @@ test("import validates schema, numbers, dates and record identity without mutati
     parseState({ ...state, foodLogs: [state.foodLogs[0], state.foodLogs[0]] }),
   );
   assert.deepEqual(parseState(emptyState()), emptyState());
+});
+
+test("legacy version 1 backups gain an empty custom catalog without losing profiles or logs", () => {
+  const legacy = {
+    version: 1,
+    profile,
+    foodLogs: [makeFoodLog(rice, 150, "午餐", "2026-10-12")],
+    exerciseLogs: [makeExerciseLog(running, 30, 70, "2026-10-12")],
+  };
+  const before = JSON.stringify(legacy);
+  const migrated = parseState(JSON.parse(before));
+  assert.equal(STORAGE_KEY, "calorie-studio:v1");
+  assert.equal(migrated.version, 1);
+  assert.deepEqual(migrated.profile, legacy.profile);
+  assert.deepEqual(migrated.foodLogs, legacy.foodLogs);
+  assert.deepEqual(migrated.exerciseLogs, legacy.exerciseLogs);
+  assert.deepEqual(migrated.customFoods, []);
+  assert.equal(JSON.stringify(legacy), before);
+  assert.deepEqual(parseState(JSON.parse(JSON.stringify(migrated))), migrated);
+});
+
+test("custom food nutrition survives JSON backup and logging at the chosen portion", () => {
+  const custom = makeCustomFood({
+    name: "  我的蛋白麦片  ",
+    kcal: 250,
+    protein: 12,
+    carbs: 34,
+    fat: 7,
+    portionGrams: 150,
+  });
+  assert.equal(custom.name, "我的蛋白麦片");
+  assert.equal(custom.category, "自定义");
+  assert.equal(custom.emoji, "🍽️");
+  assert.equal(custom.portion, "1 份");
+  assert.match(
+    custom.id,
+    /^custom-[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/,
+  );
+  const log = makeFoodLog(custom, custom.portionGrams, "早餐", "2026-10-12");
+  assert.equal(log.kcal, 375);
+  assert.equal(log.protein, 18);
+  assert.equal(log.carbs, 51);
+  assert.equal(log.fat, 10.5);
+  assert.equal(log.foodId, custom.id);
+  const state = {
+    ...emptyState(),
+    profile,
+    customFoods: [custom],
+    foodLogs: [log],
+  };
+  const restored = parseState(JSON.parse(JSON.stringify(state)));
+  assert.deepEqual(restored, state);
+  assert.notEqual(restored.customFoods, state.customFoods);
+  assert.notEqual(restored.customFoods[0], state.customFoods[0]);
+  restored.customFoods[0].name = "改名";
+  assert.equal(state.customFoods[0].name, "我的蛋白麦片");
+  const unknownMacros = makeCustomFood({
+    name: "只知道热量的包装食品",
+    kcal: 400,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+    portionGrams: 50,
+  });
+  assert.equal(makeFoodLog(unknownMacros, 50, "加餐", "2026-10-12").kcal, 200);
+  assert.notEqual(unknownMacros.id, custom.id);
+});
+
+test("custom food imports reject malformed catalogs, invalid labels/numbers and duplicate IDs", () => {
+  const custom = makeCustomFood({
+    name: "自定义米饭",
+    kcal: 116,
+    protein: 2.6,
+    carbs: 25.6,
+    fat: 0.3,
+    portionGrams: 150,
+  });
+  const state = { ...emptyState(), customFoods: [custom] };
+  for (const customFoods of [
+    null,
+    {},
+    "food",
+    [null],
+    new Array(2001).fill(custom),
+  ]) {
+    assert.throws(() => parseState({ ...state, customFoods }));
+  }
+  assert.throws(
+    () => parseState({ ...state, customFoods: [custom, custom] }),
+    /重复/,
+  );
+  const badPatches = [
+    { id: "white-rice" },
+    { id: "custom-" },
+    { category: "主食谷物" },
+    { name: " " },
+    { name: "a".repeat(101) },
+    { emoji: "" },
+    { portion: "" },
+    { portionGrams: 0 },
+    { portionGrams: 2001 },
+    { kcal: -1 },
+    { kcal: NaN },
+    { kcal: Infinity },
+    { kcal: "116" },
+    { kcal: 1001 },
+    { protein: -1 },
+    { protein: 101 },
+    { carbs: undefined },
+    { fat: Infinity },
+    { protein: 50, carbs: 50, fat: 2 },
+    { keywords: 42 },
+    { keywords: "a".repeat(501) },
+  ];
+  for (const patch of badPatches) {
+    assert.throws(() =>
+      parseState({ ...state, customFoods: [{ ...custom, ...patch }] }),
+    );
+  }
+  assert.equal(
+    parseState({
+      ...state,
+      customFoods: [{ ...custom, protein: 100, carbs: 1, fat: 0 }],
+    }).customFoods.length,
+    1,
+  );
+  assert.equal(
+    parseState({
+      ...state,
+      customFoods: [{ ...custom, keywords: "麦片 cereal" }],
+    }).customFoods[0].keywords,
+    "麦片 cereal",
+  );
+  assert.equal(
+    parseState({
+      ...state,
+      customFoods: Array.from({ length: 2000 }, (_, index) => ({
+        ...custom,
+        id: `custom-import-${index}`,
+      })),
+    }).customFoods.length,
+    2000,
+  );
+  for (const patch of [
+    { name: "" },
+    { kcal: NaN },
+    { portionGrams: 0 },
+    { protein: 50, carbs: 50, fat: 2 },
+  ]) {
+    assert.throws(() =>
+      makeCustomFood({
+        name: custom.name,
+        kcal: custom.kcal,
+        protein: custom.protein,
+        carbs: custom.carbs,
+        fat: custom.fat,
+        portionGrams: custom.portionGrams,
+        ...patch,
+      }),
+    );
+  }
 });
 
 test("body profile accepts adult ranges and rejects invalid body fat and activity values", () => {
@@ -322,6 +485,13 @@ test("loading never silently replaces damaged stored data or writes to storage",
     assert.deepEqual(loadState(), emptyState());
     raw = JSON.stringify({ ...emptyState(), profile });
     assert.deepEqual(loadState().profile, profile);
+    raw = JSON.stringify({
+      version: 1,
+      profile,
+      foodLogs: [],
+      exerciseLogs: [],
+    });
+    assert.deepEqual(loadState(), { ...emptyState(), profile });
     raw = "{broken";
     assert.throws(() => loadState(), /无法读取/);
     raw = JSON.stringify({
@@ -337,10 +507,12 @@ test("loading never silently replaces damaged stored data or writes to storage",
 });
 
 test("food catalog has diverse populated categories, unique IDs and usable nutrition/portions", () => {
-  assert.ok(foods.length >= 100);
-  assert.equal(foodCategories.length, 6);
+  assert.ok(foods.length >= 400);
+  assert.ok(foodCategories.length >= 8);
+  assert.ok(!foodCategories.includes("自定义"));
   assert.equal(new Set(foodCategories).size, foodCategories.length);
   assert.equal(new Set(foods.map((food) => food.id)).size, foods.length);
+  assert.equal(new Set(foods.map((food) => food.name)).size, foods.length);
   for (const category of foodCategories)
     assert.ok(
       foods.filter((food) => food.category === category).length >= 10,
