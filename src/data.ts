@@ -529,15 +529,27 @@ const baseFoods: Food[] = [
     ],
     [
       "egg-white",
-      "蛋白（煮熟）",
+      "蛋清（鸡蛋白，煮熟）",
       "🥚",
       52,
       10.9,
       0.7,
       0.2,
-      "1 个蛋白",
+      "1 个鸡蛋的蛋清",
       33,
-      "danbai egg white",
+      "蛋白 鸡蛋清 鸡蛋白 熟蛋清 煮蛋清 水煮蛋清 煮熟蛋清 蛋清煮熟 蛋白煮熟 danqing dan qing danbai dan bai egg white eggwhite cooked boiled",
+    ],
+    [
+      "raw-egg-white",
+      "蛋清（鸡蛋白，生）",
+      "🥚",
+      52,
+      10.9,
+      0.7,
+      0.2,
+      "1 个鸡蛋的蛋清",
+      33,
+      "蛋白 鸡蛋清 鸡蛋白 生蛋清 生蛋白 danqing dan qing danbai dan bai egg white eggwhite raw uncooked",
     ],
     [
       "quail-egg",
@@ -1778,11 +1790,16 @@ const baseFoods: Food[] = [
   ...livestockCutFoods,
   ...seafoodCutFoods,
   ...cookingFoods,
-].map((food) =>
-  food.id === "olive-oil"
-    ? { ...food, category: "调味与油脂" as const }
-    : withMeatSearchParents(food),
-);
+].map((food) => {
+  if (food.id === "olive-oil")
+    return { ...food, category: "调味与油脂" as const };
+  if (food.id === "egg-white" || food.id === "raw-egg-white")
+    return {
+      ...food,
+      note: "普通鸡蛋的蛋清通用参考估算，不含蛋黄、蛋壳或额外油糖。1 个鸡蛋的蛋清约 33 g 只是份量示例，大小和生熟含水量会有差异，请按实际重量记录；液体蛋清或蛋清粉以包装标签为准。",
+    };
+  return withMeatSearchParents(food);
+});
 
 // 品牌条目用于按常见商品名称寻找同类参考，不代表已核验该商品的标签。
 const probioticReference = baseFoods.find(

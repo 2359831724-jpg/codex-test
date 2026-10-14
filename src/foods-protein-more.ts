@@ -941,7 +941,7 @@ const referenceFoods: Food[] = [
       0.1,
       "1 份粉末",
       25,
-      "danqing danbaifen dan qing dan bai fen egg white protein powder",
+      "蛋清粉 鸡蛋蛋清粉 danqing danbaifen dan qing dan bai fen egg white protein powder egg white powder albumen powder",
     ],
     [
       "ext-protein-more-sesame-milk",

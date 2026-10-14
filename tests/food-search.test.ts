@@ -26,6 +26,47 @@ function food(
 }
 const ids = (foods: Food[]) => foods.map((item) => item.id);
 
+test("ordinary egg whites are searchable by common names before protein powders", () => {
+  for (const query of [
+    "蛋清",
+    "蛋白",
+    "鸡蛋清",
+    "鸡蛋白",
+    "danqing",
+    "dan qing",
+    "danbai",
+    "egg white",
+    "EGG-WHITE",
+  ]) {
+    const matches = searchFoods(foods, query);
+    assert.equal(matches[0]?.id, "egg-white", query);
+    assert.ok(ids(matches).includes("raw-egg-white"), query);
+    const powderIndex = matches.findIndex(
+      (item) => item.id === "ext-protein-more-egg-white-powder",
+    );
+    if (powderIndex !== -1) {
+      assert.ok(
+        matches.findIndex((item) => item.id === "raw-egg-white") < powderIndex,
+        query,
+      );
+    }
+  }
+  for (const query of ["熟蛋清", "水煮蛋清", "蛋清 煮熟", "蛋白 熟"]) {
+    assert.deepEqual(ids(searchFoods(foods, query)), ["egg-white"], query);
+  }
+  for (const query of ["生蛋清", "蛋清 生", "egg white raw"]) {
+    assert.deepEqual(ids(searchFoods(foods, query)), ["raw-egg-white"], query);
+  }
+  assert.deepEqual(ids(searchFoods(foods, "蛋清粉")), [
+    "ext-protein-more-egg-white-powder",
+  ]);
+  assert.ok(
+    searchFoods(foods, "蛋清").every(
+      (item) => !/乳清|酪蛋白|大豆|豌豆/.test(item.name),
+    ),
+  );
+});
+
 test("cooking-method queries find prepared foods and preserve oil differences", () => {
   for (const query of ["烤土豆", "烤马铃薯", "baked potato"]) {
     const matches = searchFoods(foods, query);
